@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Lõi Giả Lập Retro Clan Arcade</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body, html {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+    #viewport {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #000;
+    }
+    canvas#nes-canvas {
+      image-rendering: -moz-crisp-edges;
+      image-rendering: -webkit-crisp-edges;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      background: #000;
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      aspect-ratio: 4 / 3;
+    }
+    #game-container {
+      width: 100% !important;
+      height: 100% !important;
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      z-index: 10 !important;
+      display: none;
+      background: #000;
+    }
+    #game-container.active {
+      display: block !important;
+    }
+    .ejs_canvas_parent, #game-container canvas {
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 100% !important;
+      max-height: 100% !important;
+      object-fit: contain !important;
+    }
+    /* Ẩn triệt để thông báo chữ đỏ, thanh menu, popup và bảng điều khiển nội bộ của EmulatorJS */
+    .ejs_menu_bar,
+    .ejs_context_menu,
+    .ejs_popup_container,
+    .ejs_virtualGamepad_parent,
+    .ejs_virtualGamepad_open,
+    .ejs_message {
+      display: none !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+    }
+    #loading-box {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(12, 17, 30, 0.95);
+      border: 2px solid #D4AF37;
+      border-radius: 12px;
+      padding: 24px 32px;
+      z-index: 50;
+      box-shadow: 0 0 25px rgba(212, 175, 55, 0.4);
+      max-width: 85%;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid rgba(212, 175, 55, 0.2);
+      border-top-color: #D4AF37;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 16px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    #loading-text {
+      color: #F2ECE1;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+      text-align: center;
+      line-height: 1.5;
+    }
+    #status-overlay {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      color: #00ff88;
+      font-family: monospace;
+      font-size: 11px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(0, 255, 136, 0.4);
+      pointer-events: none;
+      z-index: 100;
+      display: none;
+    }
+  </style>
+  <script src="jsnes.min.js"></script>
+</head>
+<body>
+  <div id="viewport">
+    <div id="status-overlay">Sẵn sàng</div>
+
+    <!-- Hộp thông báo nạp game -->
+    <div id="loading-box">
+      <div class="spinner"></div>
+      <div id="loading-text">Đang chuẩn bị hệ thống trò chơi...</div>
+    </div>
+
+    <!-- Màn hình Canvas NES (100% offline) -->
+    <canvas id="nes-canvas" width="256" height="240"></canvas>
+
+    <!-- Màn hình Giả lập Arcade / Neo Geo / SNES / GBA -->
+    <div id="game-container"></div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('nes-canvas');
+    const ctx = canvas.getContext('2d');
+    const statusOverlay = document.getElementById('status-overlay');
+    const gameContainer = document.getElementById('game-container');
+    const loadingBox = document.getElementById('loading-box');
+    const loadingText = document.getElementById('loading-text');
+
+    // Bắt lỗi toàn cục hiển thị lên màn hình
+    window.onerror = function(msg, url, line) {
+      if (loadingText) {
+        loadingText.innerHTML = '<span style="color:#ff6b6b">Lỗi: ' + msg + '</span>';
+        loadingBox.style.display = 'flex';
+      }
+    };
+
+    const SCREEN_WIDTH = 256;
+    const SCREEN_HEIGHT = 240;
+
+    let imageData = ctx.createImageData(SCREEN_WIDTH, SCREEN_HEIGHT);
+    let buf = new ArrayBuffer(imageData.data.length);
+    let buf8 = new Uint8ClampedArray(buf);
+    let buf32 = new Uint32Array(buf);
+
+    let isRunning = false;
+    let animFrameId = null;
+    let isEmulatorJsMode = false;
+    let p2Connected = false;
+    let speedRate = 1;
+
+    // Web Audio API cho NES
+    let audioCtx = null;
+    let scriptNode = null;
+    let audioBufferQueue = [];
+    const AUDIO_BUFFER_SIZE = 2048;
+
+    function initAudio() {
+      if (audioCtx) return;
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext({ sampleRate: 44100 });
+        scriptNode = audioCtx.createScriptProcessor(AUDIO_BUFFER_SIZE, 0, 2);
+        scriptNode.onaudioprocess = function(e) {
+          const left = e.outputBuffer.getChannelData(0);
+          const right = e.outputBuffer.getChannelData(1);
+          for (let i = 0; i < AUDIO_BUFFER_SIZE; i++) {
+            if (audioBufferQueue.length > 0) {
+              const sample = audioBufferQueue.shift();
+              left[i] = sample[0];
+              right[i] = sample[1];
+            } else {
+              left[i] = 0;
+              right[i] = 0;
+            }
+          }
+        };
+        scriptNode.connect(audioCtx.destination);
+      } catch (err) {}
+    }
+
+    // Lõi JSNES
+    const nes = new jsnes.NES({
+      onFrame: function(frameBuffer) {
+        for (let i = 0; i < frameBuffer.length; i++) {
+          buf32[i] = 0xFF000000 | frameBuffer[i];
+        }
+        imageData.data.set(buf8);
+        ctx.putImageData(imageData, 0, 0);
+      },
+      onAudioSample: function(left, right) {
+        if (audioCtx && audioBufferQueue.length < AUDIO_BUFFER_SIZE * 4) {
+          audioBufferQueue.push([left, right]);
+        }
+      }
+    });
+
+    function frameLoop() {
+      if (!isRunning) return;
+      for (let s = 0; s < speedRate; s++) {
+        nes.frame();
+      }
+      animFrameId = requestAnimationFrame(frameLoop);
+    }
+
+    function getButtonCode(btnName) {
+      switch (btnName.toUpperCase()) {
+        case 'A': return jsnes.Controller.BUTTON_A;
+        case 'B': return jsnes.Controller.BUTTON_B;
+        case 'SELECT': return jsnes.Controller.BUTTON_SELECT;
+        case 'START': return jsnes.Controller.BUTTON_START;
+        case 'UP': return jsnes.Controller.BUTTON_UP;
+        case 'DOWN': return jsnes.Controller.BUTTON_DOWN;
+        case 'LEFT': return jsnes.Controller.BUTTON_LEFT;
+        case 'RIGHT': return jsnes.Controller.BUTTON_RIGHT;
+        default: return null;
+      }
+    }
+
+    // Ánh xạ nút sang Gamepad ID của EmulatorJS (Chính xác tuyệt đối 100%, không dính Hotkey lưu slot)
+    const EJS_BUTTON_IDS = {
+      'UP': 4,
+      'DOWN': 5,
+      'LEFT': 6,
+      'RIGHT': 7,
+      'A': 0,      // RetroPad B / Key Z -> Neo Geo Button A (Đặt bom / Action 1)
+      'B': 8,      // RetroPad A / Key X -> Neo Geo Button B (Dừng bom / Action 2)
+      'C': 1,      // RetroPad Y / Key C -> Neo Geo Button C (Action 3)
+      'D': 9,      // RetroPad X / Key V -> Neo Geo Button D (Action 4)
+      'SELECT': 2, // SELECT / COIN
+      'START': 3   // START
+    };
+
+    // Bảng phím chi tiết cho Arcade / Neo Geo (Đã loại bỏ hoàn toàn phím 1 và 5 để không bị nhảy Save State Slot 1)
+    const ARCADE_KEY_MAP = {
+      1: {
+        'UP': [{ key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 }],
+        'DOWN': [{ key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 }],
+        'LEFT': [{ key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 }],
+        'RIGHT': [{ key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 }],
+        'A': [{ key: 'z', code: 'KeyZ', keyCode: 90 }],
+        'B': [{ key: 'x', code: 'KeyX', keyCode: 88 }],
+        'C': [{ key: 'c', code: 'KeyC', keyCode: 67 }, { key: 'a', code: 'KeyA', keyCode: 65 }],
+        'D': [{ key: 'v', code: 'KeyV', keyCode: 86 }, { key: 's', code: 'KeyS', keyCode: 83 }],
+        'SELECT': [
+          { key: 'Shift', code: 'ShiftRight', keyCode: 16 }
+        ],
+        'START': [
+          { key: 'Enter', code: 'Enter', keyCode: 13 }
+        ]
+      },
+      2: {
+        'UP': [{ key: 'w', code: 'KeyW', keyCode: 87 }],
+        'DOWN': [{ key: 's', code: 'KeyS', keyCode: 83 }],
+        'LEFT': [{ key: 'a', code: 'KeyA', keyCode: 65 }],
+        'RIGHT': [{ key: 'd', code: 'KeyD', keyCode: 68 }],
+        'A': [{ key: 'j', code: 'KeyJ', keyCode: 74 }],
+        'B': [{ key: 'k', code: 'KeyK', keyCode: 75 }],
+        'C': [{ key: 'u', code: 'KeyU', keyCode: 85 }],
+        'D': [{ key: 'i', code: 'KeyI', keyCode: 73 }],
+        'SELECT': [
+          { key: 'o', code: 'KeyO', keyCode: 79 }
+        ],
+        'START': [
+          { key: 'p', code: 'KeyP', keyCode: 80 }
+        ]
+      }
+    };
+
+    function dispatchKey(item, isPressed) {
+      const type = isPressed ? 'keydown' : 'keyup';
+      const eventInit = {
+        key: item.key,
+        code: item.code,
+        keyCode: item.keyCode,
+        which: item.keyCode,
+        bubbles: true,
+        cancelable: true
+      };
+      const evt = new KeyboardEvent(type, eventInit);
+      window.dispatchEvent(evt);
+      document.dispatchEvent(evt);
+      if (document.body) {
+        document.body.dispatchEvent(evt);
+      }
+
+      const canvasEl = document.querySelector('#game-container canvas') || document.querySelector('canvas');
+      if (canvasEl) {
+        canvasEl.dispatchEvent(new KeyboardEvent(type, eventInit));
+      }
+    }
+
+    window.playerInput = function(player, btnName, isPressed) {
+      if (!isEmulatorJsMode) {
+        // NES Mode
+        const code = getButtonCode(btnName);
+        if (code !== null) {
+          if (isPressed) nes.buttonDown(player, code);
+          else nes.buttonUp(player, code);
+        }
+      } else {
+        // Arcade / Neo Geo / SNES Mode
+        // 1. Gửi trực tiếp vào simulateInput của GameManager (Bỏ qua hoàn toàn hotkey bàn phím)
+        const pIndex = player - 1;
+        const btnId = EJS_BUTTON_IDS[btnName.toUpperCase()];
+        if (btnId !== undefined && window.EJS_emulator && window.EJS_emulator.gameManager && typeof window.EJS_emulator.gameManager.simulateInput === 'function') {
+          try {
+            window.EJS_emulator.gameManager.simulateInput(pIndex, btnId, isPressed ? 1 : 0);
+          } catch(e) {}
+        }
+
+        // 2. Dự phòng qua bàn phím an toàn (Chỉ gửi Enter/Shift, tuyệt đối không gửi phím số 1 gây Save Slot)
+        const pMap = ARCADE_KEY_MAP[player] || ARCADE_KEY_MAP[1];
+        const keys = pMap[btnName.toUpperCase()];
+        if (keys && keys.length > 0) {
+          for (let i = 0; i < keys.length; i++) {
+            dispatchKey(keys[i], isPressed);
+          }
+        }
+      }
+    };
+
+    window.setSpeed = function(multiplier) {
+      speedRate = multiplier || 1;
+    };
+
+    window.setP2Status = function(connected) {
+      p2Connected = connected;
+    };
+
+    window.resetGame = function() {
+      if (!isEmulatorJsMode && isRunning) {
+        nes.reset();
+      } else {
+        window.location.reload();
+      }
+    };
+
+    // Khởi chạy lõi Arcade (Neo Geo / MAME) với CDN EmulatorJS chính thức 4.2.3
+    function startEmulatorJs(coreType, romUrl, gameTitle) {
+      isEmulatorJsMode = true;
+      canvas.style.display = 'none';
+      gameContainer.classList.add('active');
+      gameContainer.style.setProperty('display', 'block', 'important');
+
+      loadingText.innerText = `Đang nạp dữ liệu Arcade & Neo Geo (${gameTitle})...\nVui lòng đợi giây lát`;
+
+      // Lấy tên định danh ngắn của ROM (ví dụ 'neobombe' thay vì 'Neo Bomberman')
+      let rawRomName = romUrl.split('/').pop().split('?')[0].replace(/\.[^/.]+$/, '').toLowerCase();
+      if (rawRomName.includes('neobombe') || rawRomName.includes('bomber')) {
+        rawRomName = 'neobombe';
+      }
+
+      window.EJS_DEBUG_XX = true;
+      window.EJS_player = '#game-container';
+      window.EJS_core = (coreType === 'arcade' || coreType === 'neogeo' || coreType === 'mame') ? 'arcade' : coreType;
+      window.EJS_gameUrl = romUrl;
+      window.EJS_gameName = rawRomName; // Bắt buộc là tên driver chuẩn 'neobombe' để FBNeo nạp game
+      window.EJS_pathtodata = 'https://cdn.emulatorjs.org/4.2.3/data/';
+      window.EJS_startOnLoaded = true;
+      window.EJS_color = '#D4AF37';
+      window.EJS_threads = false; // Đảm bảo tương thích 100% không yêu cầu SharedArrayBuffer
+      window.EJS_hideSettings = true;
+      window.EJS_Buttons = false;
+
+      // Giữ nguyên archive neogeo.zip không giải nén cho FBNeo
+      window.EJS_dontExtractBIOS = true;
+      window.EJS_biosUrl = '/neogeo.zip';
+      window.EJS_gameParentUrl = '/neogeo.zip';
+      window.EJS_externalFiles = {
+        "neogeo.zip": "/neogeo.zip",
+        "/neogeo.zip": "/neogeo.zip"
+      };
+
+      window.EJS_ready = function() {
+        loadingText.innerText = 'Đang khởi động hệ máy Neo Geo...';
+        if (window.EJS_emulator) {
+          try {
+            if (window.EJS_emulator.menu && typeof window.EJS_emulator.menu.close === 'function') {
+              window.EJS_emulator.menu.close();
+            }
+          } catch(e) {}
+        }
+      };
+
+      window.EJS_onGameStart = function() {
+        loadingBox.style.display = 'none';
+        if (window.EJS_emulator) {
+          try {
+            if (window.EJS_emulator.menu && typeof window.EJS_emulator.menu.close === 'function') {
+              window.EJS_emulator.menu.close();
+            }
+            if (window.EJS_emulator.paused && typeof window.EJS_emulator.play === 'function') {
+              window.EJS_emulator.play();
+            }
+          } catch(e) {}
+        }
+      };
+
+      const script = document.createElement('script');
+      script.src = 'https://cdn.emulatorjs.org/4.2.3/data/loader.js';
+      script.onerror = function() {
+        loadingText.innerHTML = '<span style="color:#ff6b6b">Lỗi kết nối CDN EmulatorJS.<br>Vui lòng kiểm tra lại mạng Internet.</span>';
+      };
+      document.body.appendChild(script);
+    }
+
+    // Đọc thông số URL
+    const params = new URLSearchParams(window.location.search);
+    const core = (params.get('core') || 'nes').toLowerCase();
+    const title = params.get('title') || 'Game';
+    const romFile = params.get('file') || 'rom.data';
+
+    loadingText.innerText = `Đang nạp file "${title}"...`;
+
+    // Tải dữ liệu ROM từ máy chủ nội bộ
+    fetch('/' + romFile)
+      .then(res => {
+        if (!res.ok) throw new Error('Không thể tải file ROM (' + res.status + ')');
+        return res.arrayBuffer();
+      })
+      .then(buffer => {
+        const bytes = new Uint8Array(buffer);
+        // Kiểm tra xem có phải định dạng NES (iNES header 'NES\x1a')
+        const isNes = bytes.length > 4 && bytes[0] === 0x4E && bytes[1] === 0x45 && bytes[2] === 0x53 && bytes[3] === 0x1A;
+
+        if (isNes || core === 'nes') {
+          // Lõi JSNES chạy 100% offline
+          initAudio();
+          let binaryStr = '';
+          for (let i = 0; i < bytes.length; i++) {
+            binaryStr += String.fromCharCode(bytes[i]);
+          }
+          nes.loadROM(binaryStr);
+          isRunning = true;
+          loadingBox.style.display = 'none';
+          requestAnimationFrame(frameLoop);
+        } else {
+          // Lõi Arcade / Neo Geo (neobombe.zip)
+          startEmulatorJs(core, '/' + romFile, title);
+        }
+      })
+      .catch(err => {
+        loadingText.innerHTML = '<span style="color:#ff6b6b">Lỗi nạp ROM: ' + err.message + '</span>';
+      });
+
+    window.addEventListener('click', () => {
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    });
+  </script>
+</body>
+</html>

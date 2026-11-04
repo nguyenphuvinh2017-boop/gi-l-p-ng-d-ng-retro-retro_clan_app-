@@ -1,0 +1,492 @@
+import 'package:flutter/material.dart';
+import '../models/game_item.dart';
+import '../models/lan_message.dart';
+import '../services/clan_netplay_service.dart';
+import '../services/rom_manager.dart';
+import 'emulator_screen.dart';
+import 'wireless_pad_screen.dart';
+
+class ClanLobbyScreen extends StatefulWidget {
+  final ClanNetplayService clanService;
+
+  const ClanLobbyScreen({super.key, required this.clanService});
+
+  @override
+  State<ClanLobbyScreen> createState() => _ClanLobbyScreenState();
+}
+
+class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  List<GameItem> _installedGames = [];
+  GameItem? _selectedGame;
+  String _localIp = '127.0.0.1';
+  bool _isHosting = false;
+  bool _isPlayer2Connected = false;
+
+  // Chế độ tham gia
+  List<ClanRoomInfo> _discoveredRooms = [];
+  final TextEditingController _manualIpController = TextEditingController();
+  bool _isJoining = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _initData();
+  }
+
+  void _initData() async {
+    _localIp = await widget.clanService.getLocalIp();
+    final games = await RomManager.getInstalledGames();
+    if (mounted) {
+      setState(() {
+        _installedGames = games;
+        if (games.isNotEmpty) _selectedGame = games.first;
+      });
+    }
+
+    widget.clanService.onRoomsDiscovered = (rooms) {
+      if (mounted) {
+        setState(() {
+          _discoveredRooms = rooms;
+        });
+      }
+    };
+
+    widget.clanService.onP2ConnectionChanged = (connected) {
+      if (mounted) {
+        setState(() {
+          _isPlayer2Connected = connected;
+        });
+      }
+    };
+
+    widget.clanService.startDiscovery();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _manualIpController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _startHostRoom() async {
+    if (_selectedGame == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Colors.orangeAccent,
+          content: Text('Vui lòng chọn hoặc thêm game trước khi mở phòng!'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isHosting = true;
+    });
+
+    final success = await widget.clanService.startClanRoom(
+      roomName: 'Phòng ${_selectedGame!.title}',
+      gameTitle: _selectedGame!.title,
+    );
+
+    if (!success && mounted) {
+      setState(() {
+        _isHosting = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Colors.redAccent,
+          content: Text('Không thể mở cổng mạng LAN. Vui lòng kiểm tra quyền Wi-Fi!'),
+        ),
+      );
+    }
+  }
+
+  void _launchHostGame() {
+    if (_selectedGame != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EmulatorScreen(
+            game: _selectedGame!,
+            clanService: widget.clanService,
+            isHost: true,
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _joinHost(String hostIp) async {
+    setState(() {
+      _isJoining = true;
+    });
+
+    final success = await widget.clanService.joinClanRoom(
+      hostIp: hostIp,
+      onJoined: (gameTitle) {
+        if (mounted) {
+          setState(() {
+            _isJoining = false;
+          });
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => WirelessPadScreen(
+                clanService: widget.clanService,
+                gameTitle: gameTitle,
+                hostIp: hostIp,
+              ),
+            ),
+          );
+        }
+      },
+    );
+
+    if (!success && mounted) {
+      setState(() {
+        _isJoining = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.redAccent,
+          content: Text('Không thể kết nối tới $hostIp. Hãy đảm bảo 2 máy cùng bắt 1 mạng Wi-Fi!'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Trạng thái mạng nội bộ
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          color: const Color(0xFF16161C),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.wifi, color: Colors.greenAccent, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'IP Mạng Wi-Fi: $_localIp',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text('Đã kết nối Wi-Fi', style: TextStyle(color: Colors.greenAccent, fontSize: 11)),
+              ),
+            ],
+          ),
+        ),
+
+        // Tabs
+        TabBar(
+          controller: _tabController,
+          indicatorColor: const Color(0xFFFF2A55),
+          labelColor: const Color(0xFFFF2A55),
+          unselectedLabelColor: Colors.white60,
+          tabs: const [
+            Tab(icon: Icon(Icons.sports_esports), text: 'TẠO PHÒNG (P1)'),
+            Tab(icon: Icon(Icons.group_add), text: 'VÀO PHÒNG (P2)'),
+          ],
+        ),
+
+        // Nội dung Tab
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildHostTab(),
+              _buildJoinTab(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHostTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('1. Chọn game muốn mở phòng', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 8),
+
+          if (_installedGames.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1B1B22),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'Thư viện của bạn đang trống! Hãy quay lại tab "Thư viện" và bấm nút "Thêm Game" để chọn file game từ máy trước.',
+                style: TextStyle(color: Colors.white70),
+              ),
+            )
+          else
+            DropdownButtonFormField<GameItem>(
+              initialValue: _selectedGame,
+              dropdownColor: const Color(0xFF22222C),
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: const Color(0xFF1B1B22),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              ),
+              items: _installedGames.map((g) {
+                return DropdownMenuItem(
+                  value: g,
+                  child: Text(g.title, overflow: TextOverflow.ellipsis),
+                );
+              }).toList(),
+              onChanged: _isHosting ? null : (val) {
+                setState(() {
+                  _selectedGame = val;
+                });
+              },
+            ),
+
+          const SizedBox(height: 24),
+          const Text('2. Trạng thái phòng Clan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 8),
+
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1B1B22),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _isHosting ? Colors.greenAccent.withValues(alpha: 0.4) : Colors.white12,
+              ),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Phòng mạng LAN:', style: TextStyle(color: Colors.white70)),
+                    Text(
+                      _isHosting ? 'ĐANG MỞ (Đang phát tín hiệu Wi-Fi)' : 'Đang đóng',
+                      style: TextStyle(
+                        color: _isHosting ? Colors.greenAccent : Colors.white38,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Người chơi 2 (Clan):', style: TextStyle(color: Colors.white70)),
+                    Row(
+                      children: [
+                        Icon(
+                          _isPlayer2Connected ? Icons.check_circle : Icons.radio_button_unchecked,
+                          color: _isPlayer2Connected ? Colors.greenAccent : Colors.orangeAccent,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _isPlayer2Connected ? 'Đã kết nối & Sẵn sàng' : (_isHosting ? 'Đang đợi bạn vào...' : 'Chưa kết nối'),
+                          style: TextStyle(
+                            color: _isPlayer2Connected ? Colors.greenAccent : Colors.white70,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+          if (!_isHosting)
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF2A55),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: const Icon(Icons.wifi_tethering),
+                label: const Text('MỞ PHÒNG CLAN (LAN)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                onPressed: _startHostRoom,
+              ),
+            )
+          else ...[
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('VÀO GAME VỚI VAI TRÒ CHỦ PHÒNG', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                onPressed: _launchHostGame,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white70,
+                  side: const BorderSide(color: Colors.white24),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () async {
+                  await widget.clanService.stopAll();
+                  setState(() {
+                    _isHosting = false;
+                    _isPlayer2Connected = false;
+                  });
+                },
+                child: const Text('Đóng phòng'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildJoinTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Phòng Clan đang mở trên Wi-Fi', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Colors.greenAccent),
+                tooltip: 'Quét lại phòng',
+                onPressed: () => widget.clanService.startDiscovery(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          if (_discoveredRooms.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1B1B22),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Center(
+                child: Column(
+                  children: [
+                    SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFFFF2A55)),
+                    ),
+                    SizedBox(height: 16),
+                    Text(
+                      'Đang quét tìm phòng Clan trên mạng Wi-Fi...',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Hãy chắc chắn rằng máy chủ phòng đã bấm "MỞ PHÒNG CLAN"',
+                      style: TextStyle(color: Colors.white38, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _discoveredRooms.length,
+              itemBuilder: (ctx, idx) {
+                final room = _discoveredRooms[idx];
+                return Card(
+                  color: const Color(0xFF1B1B22),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: ListTile(
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFFFF2A55),
+                      child: Icon(Icons.sports_esports, color: Colors.white),
+                    ),
+                    title: Text(room.gameTitle, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    subtitle: Text('IP Chủ phòng: ${room.hostIp}:${room.port}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
+                    trailing: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF2A55)),
+                      onPressed: _isJoining ? null : () => _joinHost(room.hostIp),
+                      child: const Text('Vào làm P2', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                );
+              },
+            ),
+
+          const SizedBox(height: 28),
+          const Text('Hoặc nhập IP của Chủ phòng', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 8),
+
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _manualIpController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Ví dụ: 192.168.1.15',
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    filled: true,
+                    fillColor: const Color(0xFF1B1B22),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF2A55),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: _isJoining
+                    ? null
+                    : () {
+                        final ip = _manualIpController.text.trim();
+                        if (ip.isNotEmpty) _joinHost(ip);
+                      },
+                child: const Text('Kết nối', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}

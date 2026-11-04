@@ -1,0 +1,332 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'screens/home_screen.dart';
+import 'screens/browse_retrostic_screen.dart';
+import 'screens/clan_lobby_screen.dart';
+import 'services/clan_netplay_service.dart';
+
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (!Platform.isWindows) {
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+  }
+  runApp(const RetroClanApp());
+}
+
+class RetroClanApp extends StatelessWidget {
+  const RetroClanApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Retro Clan Play',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF090D18),
+        primaryColor: const Color(0xFF1E88E5),
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF1E88E5),
+          secondary: Color(0xFF29A3FF),
+          surface: Color(0xFF131C31),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF0F1626),
+          elevation: 0,
+          centerTitle: false,
+        ),
+      ),
+      home: const MainNavigationScreen(),
+    );
+  }
+}
+
+class MainNavigationScreen extends StatefulWidget {
+  const MainNavigationScreen({super.key});
+
+  @override
+  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
+}
+
+class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  int _currentIndex = 0;
+  final ClanNetplayService _clanService = ClanNetplayService();
+  final GlobalKey<HomeScreenState> _homeKey = GlobalKey<HomeScreenState>();
+
+  @override
+  void dispose() {
+    _clanService.stopAll();
+    super.dispose();
+  }
+
+  void _onBottomDockTapped(int index) {
+    if (index == 0) {
+      // MẠNG LAN
+      setState(() {
+        _currentIndex = 2;
+      });
+    } else if (index == 1) {
+      // ONLINE (Kho game Retrostic)
+      setState(() {
+        _currentIndex = 1;
+      });
+    } else if (index == 2) {
+      // THÊM ROM (Mở file picker ngay lập tức)
+      _homeKey.currentState?.pickAndImportGame();
+      setState(() {
+        _currentIndex = 0;
+      });
+    } else if (index == 3) {
+      // THÊM SAVE (Nhập file .sav từ máy)
+      _homeKey.currentState?.pickSaveState();
+    } else if (index == 4) {
+      // CHAT / PHÒNG CLAN
+      setState(() {
+        _currentIndex = 2;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screens = [
+      HomeScreen(
+        key: _homeKey,
+        clanService: _clanService,
+        onOpenStore: () => setState(() => _currentIndex = 1),
+        onOpenLan: () => setState(() => _currentIndex = 2),
+      ),
+      BrowseRetrosticScreen(
+        clanService: _clanService,
+        onGameDownloaded: () {
+          _homeKey.currentState?.refreshLibrary();
+        },
+      ),
+      ClanLobbyScreen(clanService: _clanService),
+    ];
+
+    return Scaffold(
+      // Top AppBar mang phong cách RetroFun
+      appBar: AppBar(
+        title: Row(
+          children: [
+            // Logo chữ R bóng bảy
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF29A3FF), Color(0xFF9C27B0), Color(0xFFFF2A55)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(color: const Color(0xFF29A3FF).withValues(alpha: 0.4), blurRadius: 6),
+                ],
+              ),
+              child: const Center(
+                child: Text(
+                  'R',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                RichText(
+                  text: const TextSpan(
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    children: [
+                      TextSpan(text: 'Retro', style: TextStyle(color: Colors.white)),
+                      TextSpan(text: 'Clan', style: TextStyle(color: Color(0xFF29A3FF))),
+                    ],
+                  ),
+                ),
+                const Text(
+                  'PLAY CLASSICS ANYWHERE',
+                  style: TextStyle(color: Colors.white38, fontSize: 8, letterSpacing: 1.0, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          // Nút chuyển về Thư viện
+          if (_currentIndex != 0)
+            IconButton(
+              icon: const Icon(Icons.collections_bookmark, color: Color(0xFF29A3FF)),
+              tooltip: 'Về Thư viện',
+              onPressed: () => setState(() => _currentIndex = 0),
+            ),
+          // Nút Cài đặt
+          IconButton(
+            icon: const Icon(Icons.settings, color: Colors.white70),
+            tooltip: 'Cài đặt',
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Đang tối ưu cài đặt tay cầm và mạng LAN')),
+              );
+            },
+          ),
+        ],
+      ),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: screens,
+      ),
+
+      // DOCK ĐIỀU HƯỚNG 5 NÚT ARCADE PHONG CÁCH RETROFUN
+      bottomNavigationBar: Container(
+        height: 68,
+        decoration: BoxDecoration(
+          color: const Color(0xFF080C16),
+          border: const Border(top: BorderSide(color: Color(0xFF1B2A4A), width: 1.5)),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 10, offset: const Offset(0, -2)),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            // 1. MẠNG LAN
+            _buildDockBtn(
+              index: 0,
+              icon: Icons.lan,
+              label: 'MẠNG LAN',
+              gradientColors: [const Color(0xFF00E5FF), const Color(0xFF0091EA)],
+              isActive: _currentIndex == 2,
+            ),
+            // 2. ONLINE
+            _buildDockBtn(
+              index: 1,
+              icon: Icons.public,
+              label: 'ONLINE',
+              gradientColors: [const Color(0xFF29B6F6), const Color(0xFF0277BD)],
+              isActive: _currentIndex == 1,
+            ),
+            // 3. THÊM ROM
+            _buildDockBtn(
+              index: 2,
+              icon: Icons.sports_esports,
+              badgeIcon: Icons.add,
+              label: 'THÊM ROM',
+              gradientColors: [const Color(0xFFFFB300), const Color(0xFFE65100)],
+              isActive: false,
+            ),
+            // 4. THÊM SAVE
+            _buildDockBtn(
+              index: 3,
+              icon: Icons.save,
+              badgeIcon: Icons.add,
+              label: 'THÊM SAVE',
+              gradientColors: [const Color(0xFF42A5F5), const Color(0xFF1565C0)],
+              isActive: false,
+            ),
+            // 5. CHAT
+            _buildDockBtn(
+              index: 4,
+              icon: Icons.chat_bubble,
+              label: 'CHAT',
+              gradientColors: [const Color(0xFF66BB6A), const Color(0xFF2E7D32)],
+              isActive: false,
+              hasNotification: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDockBtn({
+    required int index,
+    required IconData icon,
+    IconData? badgeIcon,
+    required String label,
+    required List<Color> gradientColors,
+    required bool isActive,
+    bool hasNotification = false,
+  }) {
+    return InkWell(
+      onTap: () => _onBottomDockTapped(index),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    gradient: LinearGradient(
+                      colors: gradientColors,
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    border: Border.all(
+                      color: isActive ? Colors.white : Colors.white24,
+                      width: isActive ? 1.8 : 1.0,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: gradientColors.first.withValues(alpha: 0.35),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Icon(icon, color: Colors.white, size: 20),
+                      if (badgeIcon != null)
+                        Positioned(
+                          right: 2,
+                          bottom: 2,
+                          child: Icon(badgeIcon, color: Colors.yellowAccent, size: 10),
+                        ),
+                    ],
+                  ),
+                ),
+                if (hasNotification)
+                  Positioned(
+                    top: -2,
+                    right: -2,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? const Color(0xFF29A3FF) : Colors.white70,
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.4,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

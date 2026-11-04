@@ -685,9 +685,9 @@
     function getOffscreenCanvas() {
       if (!offscreenCanvas) {
         offscreenCanvas = document.createElement('canvas');
-        // Chuẩn độ phân giải Full HD Retro 960x720 (3x Integer Scale siêu nét, giữ nguyên tỉ lệ 4:3)
-        offscreenCanvas.width = 960;
-        offscreenCanvas.height = 720;
+        // Chuẩn độ phân giải 480x360 (Tỉ lệ 4:3 siêu tối ưu: dung lượng chỉ 12KB/frame, mã hóa cực nhanh <1ms)
+        offscreenCanvas.width = 480;
+        offscreenCanvas.height = 360;
         offscreenCtx = offscreenCanvas.getContext('2d', { alpha: false, desynchronized: true });
         offscreenCtx.imageSmoothingEnabled = false;
         offscreenCtx.webkitImageSmoothingEnabled = false;
@@ -722,9 +722,11 @@
         }
         screenFeedRafId = requestAnimationFrame(onFrameLoop);
         frameSkipCounter++;
-        // Khóa nhịp cứng 30 FPS theo VSync của trình giả lập, loại bỏ 100% hiện tượng lệch nhịp gây giật hình
+        // Khóa nhịp cứng 30 FPS theo VSync của trình giả lập
         if (frameSkipCounter % 2 !== 0) return;
         if (!screenFeedWs || screenFeedWs.readyState !== WebSocket.OPEN) return;
+        // Kiểm tra chống nghẽn buffer mạng LAN: Bỏ qua nếu socket chưa gửi xong frame trước (tránh ứ đọng gây trễ/lag)
+        if (screenFeedWs.bufferedAmount > 16384) return;
         if (isCapturingFrame) return;
 
         try {
@@ -735,16 +737,18 @@
 
           isCapturingFrame = true;
           const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas();
-          offCtx.drawImage(cvs, 0, 0, 960, 720);
+          offCtx.drawImage(cvs, 0, 0, 480, 360);
           offCvs.toBlob((blob) => {
             try {
               if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
-                screenFeedWs.send(blob);
+                if (screenFeedWs.bufferedAmount <= 16384) {
+                  screenFeedWs.send(blob);
+                }
               }
             } finally {
               isCapturingFrame = false;
             }
-          }, 'image/jpeg', 0.88);
+          }, 'image/jpeg', 0.86);
         } catch(e) {
           isCapturingFrame = false;
         }

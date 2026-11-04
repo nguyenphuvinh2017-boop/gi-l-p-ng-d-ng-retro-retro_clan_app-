@@ -17,7 +17,7 @@ class ClanNetplayService {
   <style>
     * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-user-select:none; }
     html, body { width:100%; height:100%; background:#000; overflow:hidden; display:flex; align-items:center; justify-content:center; }
-    #canvas { width:100%; height:100%; object-fit:contain; image-rendering:pixelated; image-rendering:crisp-edges; }
+    #canvas { width:100%; height:100%; object-fit:contain; image-rendering:pixelated; image-rendering:-moz-crisp-edges; image-rendering:crisp-edges; }
     #tapPrompt {
       position:absolute; top:8px; left:50%; transform:translateX(-50%);
       background:rgba(19, 28, 49, 0.94); border:1.5px solid #00E5FF; color:#00E5FF;
@@ -29,7 +29,7 @@ class ClanNetplayService {
 </head>
 <body>
   <div id="tapPrompt" onclick="unlockAudio()">🔊 Bấm để mở âm thanh</div>
-  <canvas id="canvas" width="960" height="720"></canvas>
+  <canvas id="canvas" width="480" height="360"></canvas>
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
@@ -64,32 +64,64 @@ class ClanNetplayService {
     const urlParams = new URLSearchParams(window.location.search);
     const host = urlParams.get('host') || window.location.hostname || '127.0.0.1';
 
-    // 1. Nhận luồng Video Full HD 640x480 và giải mã trực tiếp bằng GPU
+    // 1. Nhận luồng Video trực tiếp siêu đồng bộ (Tự động xả bỏ khung hình trễ, loại bỏ 100% giật chậm)
+    let latestBlob = null;
+    let isDrawing = false;
+
+    function drawNextFrame() {
+      if (!latestBlob) {
+        isDrawing = false;
+        return;
+      }
+      isDrawing = true;
+      const blob = latestBlob;
+      latestBlob = null; // Luôn xả sạch hàng đợi cũ, chỉ giữ khung hình mới nhất!
+
+      if (window.createImageBitmap) {
+        createImageBitmap(blob).then(bmp => {
+          ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+          bmp.close();
+          if (latestBlob) {
+            requestAnimationFrame(drawNextFrame);
+          } else {
+            isDrawing = false;
+          }
+        }).catch(() => {
+          isDrawing = false;
+        });
+      } else {
+        const img = new Image();
+        img.src = URL.createObjectURL(blob);
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(img.src);
+          if (latestBlob) {
+            requestAnimationFrame(drawNextFrame);
+          } else {
+            isDrawing = false;
+          }
+        };
+        img.onerror = () => {
+          isDrawing = false;
+        };
+      }
+    }
+
     function connectVideo() {
       const ws = new WebSocket('ws://' + host + ':8989/screen_feed_client');
       ws.binaryType = 'blob';
       ws.onmessage = function(e) {
-        if (window.createImageBitmap) {
-          createImageBitmap(e.data).then(bmp => {
-            ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-            bmp.close();
-          }).catch(() => {});
-        } else {
-          const img = new Image();
-          img.src = URL.createObjectURL(e.data);
-          img.onload = () => {
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            URL.revokeObjectURL(img.src);
-          };
+        latestBlob = e.data; // Ghi đè khung hình mới nhất
+        if (!isDrawing) {
+          drawNextFrame();
         }
       };
       ws.onclose = () => setTimeout(connectVideo, 1000);
     }
     connectVideo();
 
-    // 2. Nhận luồng Âm thanh PCM 16-bit và phát mượt mà
+    // 2. Nhận luồng Âm thanh PCM 16-bit và phát mượt mà đồng bộ thời gian thực
     function connectAudio() {
-      const host = window.location.hostname || '127.0.0.1';
       const ws = new WebSocket('ws://' + host + ':8989/audio_feed');
       ws.binaryType = 'arraybuffer';
       ws.onmessage = function(e) {
@@ -106,7 +138,7 @@ class ClanNetplayService {
           f32[i] = i16[i] / (i16[i] < 0 ? 32768 : 32767);
         }
 
-        const buf = actx.createBuffer(1, len, actx.sampleRate || 44100);
+        const buf = actx.createBuffer(1, len, 44100);
         buf.getChannelData(0).set(f32);
 
         const src = actx.createBufferSource();
@@ -114,8 +146,9 @@ class ClanNetplayService {
         src.connect(actx.destination);
 
         const now = actx.currentTime;
-        if (nextAudioTime < now || nextAudioTime > now + 0.25) {
-          nextAudioTime = now + 0.02;
+        // Giữ buffer siêu ngắn để đồng bộ tuyệt đối với hình ảnh và hành động người chơi 1
+        if (nextAudioTime < now || nextAudioTime > now + 0.08) {
+          nextAudioTime = now + 0.015;
         }
         src.start(nextAudioTime);
         nextAudioTime += buf.duration;

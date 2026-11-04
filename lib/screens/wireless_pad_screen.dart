@@ -1,9 +1,11 @@
-// import 'dart:ui' as ui;
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:webview_windows/webview_windows.dart';
 import '../services/clan_netplay_service.dart';
 import '../services/app_language.dart';
 import '../widgets/arcade_gamepad.dart';
@@ -32,7 +34,10 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   String _joystickType = 'dpadSquare4'; // 'dpadSquare4' (ô vuông) hoặc 'analog360'
   String _joystickSensitivity = 'normal';
   bool _isEditMode = false;
-  WebViewController? _p2DisplayController;
+  WebviewController? _winController;
+  WebViewController? _mobileController;
+  bool _isWinReady = false;
+  final ValueNotifier<Uint8List?> _currentFrameNotifier = ValueNotifier<Uint8List?>(null);
 
   Map<String, Offset>? _customButtonsLand;
   Map<String, Offset>? _customButtonsPort;
@@ -41,20 +46,19 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   void initState() {
     super.initState();
     _loadGamepadSettings();
-    try {
-      _p2DisplayController = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setBackgroundColor(Colors.black);
 
-      if (_p2DisplayController!.platform is AndroidWebViewController) {
-        (_p2DisplayController!.platform as AndroidWebViewController)
-            .setMediaPlaybackRequiresUserGesture(false);
-      }
+    // 1. Nhận luồng khung hình trực tiếp từ Host qua WebSocket
+    widget.clanService.onScreenFrameReceived = (frame) {
+      _currentFrameNotifier.value = frame;
+    };
 
-      _p2DisplayController!.loadRequest(
-        Uri.parse('http://${widget.hostIp}:${ClanNetplayService.defaultWsPort}/p2_screen'),
-      );
-    } catch (_) {}
+    // 2. Khởi tạo Web Audio & Canvas WebView theo nền tảng
+    final p2Url = 'http://${widget.hostIp}:${ClanNetplayService.defaultWsPort}/p2_screen?host=${widget.hostIp}';
+    if (Platform.isWindows) {
+      _initWindowsWebview(p2Url);
+    } else {
+      _initMobileWebview(p2Url);
+    }
 
     widget.clanService.onClientDisconnected = () {
       if (mounted) {
@@ -79,10 +83,48 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
     };
   }
 
+  Future<void> _initWindowsWebview(String url) async {
+    try {
+      _winController = WebviewController();
+      await _winController!.initialize();
+      await _winController!.setBackgroundColor(Colors.black);
+      await _winController!.setPopupWindowPolicy(WebviewPopupWindowPolicy.deny);
+      await _winController!.loadUrl(url);
+      if (mounted) {
+        setState(() {
+          _isWinReady = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('Lỗi khởi tạo Windows Webview cho P2: $e');
+    }
+  }
+
+  void _initMobileWebview(String url) {
+    try {
+      _mobileController = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setBackgroundColor(Colors.black);
+
+      if (_mobileController!.platform is AndroidWebViewController) {
+        (_mobileController!.platform as AndroidWebViewController)
+            .setMediaPlaybackRequiresUserGesture(false);
+      }
+
+      _mobileController!.loadRequest(Uri.parse(url));
+    } catch (e) {
+      debugPrint('Lỗi khởi tạo Mobile Webview cho P2: $e');
+    }
+  }
+
   @override
   void dispose() {
     widget.clanService.onScreenFrameReceived = null;
     widget.clanService.onClientDisconnected = null;
+    try {
+      _winController?.dispose();
+    } catch (_) {}
+    _currentFrameNotifier.dispose();
     super.dispose();
   }
 
@@ -141,7 +183,11 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
 
   void _unlockAudioOnGesture() {
     try {
-      _p2DisplayController?.runJavaScript('window.unlockAudio();');
+      if (Platform.isWindows && _winController != null && _isWinReady) {
+        _winController!.executeScript('window.unlockAudio && window.unlockAudio();');
+      } else if (_mobileController != null) {
+        _mobileController!.runJavaScript('window.unlockAudio && window.unlockAudio();');
+      }
     } catch (_) {}
   }
 
@@ -166,11 +212,38 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: _p2DisplayController != null
-          ? WebViewWidget(controller: _p2DisplayController!)
-          : const Center(
-              child: CircularProgressIndicator(color: Color(0xFF00E5FF)),
-            ),
+      child: _buildScreenContent(),
+    );
+  }
+
+  Widget _buildScreenContent() {
+    if (Platform.isWindows) {
+      if (_winController != null && _isWinReady && _winController!.value.isInitialized) {
+        return Webview(_winController!);
+      }
+    } else {
+      if (_mobileController != null) {
+        return WebViewWidget(controller: _mobileController!);
+      }
+    }
+
+    // Hiển thị trực tiếp luồng hình ảnh thời gian thực mượt mà từ Host qua WebSocket!
+    return ValueListenableBuilder<Uint8List?>(
+      valueListenable: _currentFrameNotifier,
+      builder: (context, frame, _) {
+        if (frame != null && frame.isNotEmpty) {
+          return Image.memory(
+            frame,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+            filterQuality: FilterQuality.none,
+            excludeFromSemantics: true,
+          );
+        }
+        return const Center(
+          child: CircularProgressIndicator(color: Color(0xFF00E5FF)),
+        );
+      },
     );
   }
 

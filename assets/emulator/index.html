@@ -758,29 +758,58 @@
 
     // ================= AUDIO STREAMING CHO P2 =================
     // Tự động bắt toàn bộ luồng âm thanh game qua ScriptProcessor của Web Audio
+    function __clanSendAudio(out) {
+      if (!p2Connected || !audioFeedWs || audioFeedWs.readyState !== WebSocket.OPEN) return;
+      try {
+        if (!out || out.numberOfChannels === 0) return;
+        const chan = out.getChannelData(0);
+        const len = chan.length;
+        if (len === 0) return;
+        const i16 = new Int16Array(len);
+        for (let i = 0; i < len; i++) {
+          let s = Math.max(-1, Math.min(1, chan[i]));
+          i16[i] = s < 0 ? (s * 32768) | 0 : (s * 32767) | 0;
+        }
+        audioFeedWs.send(i16.buffer);
+      } catch(e) {}
+    }
+
     (function() {
       const OrigAC = window.AudioContext || window.webkitAudioContext;
       if (OrigAC) {
         const origCreateSP = OrigAC.prototype.createScriptProcessor;
         OrigAC.prototype.createScriptProcessor = function(...args) {
           const node = origCreateSP.apply(this, args);
-          node.addEventListener('audioprocess', function(e) {
-            if (!p2Connected || !audioFeedWs || audioFeedWs.readyState !== WebSocket.OPEN) return;
-            try {
-              const out = e.outputBuffer;
-              if (out && out.numberOfChannels > 0) {
-                const chan = out.getChannelData(0);
-                const len = chan.length;
-                if (len === 0) return;
-                const i16 = new Int16Array(len);
-                for (let i = 0; i < len; i++) {
-                  let s = Math.max(-1, Math.min(1, chan[i]));
-                  i16[i] = s < 0 ? (s * 32768) | 0 : (s * 32767) | 0;
+          let gameHandler = null;
+
+          Object.defineProperty(node, 'onaudioprocess', {
+            get: function() { return gameHandler; },
+            set: function(fn) {
+              gameHandler = fn;
+              node.__clan_origHandler = function(e) {
+                if (typeof fn === 'function') {
+                  try { fn.call(node, e); } catch(err) {}
                 }
-                audioFeedWs.send(i16.buffer);
-              }
-            } catch(e) {}
+                __clanSendAudio(e.outputBuffer);
+              };
+              node.addEventListener('audioprocess', node.__clan_origHandler);
+            },
+            configurable: true,
+            enumerable: true
           });
+
+          const origAddEventListener = node.addEventListener;
+          node.addEventListener = function(type, listener, ...opts) {
+            if (type === 'audioprocess' && typeof listener === 'function' && listener !== node.__clan_origHandler) {
+              const wrapped = function(e) {
+                try { listener.call(node, e); } catch(err) {}
+                __clanSendAudio(e.outputBuffer);
+              };
+              return origAddEventListener.call(node, type, wrapped, ...opts);
+            }
+            return origAddEventListener.call(node, type, listener, ...opts);
+          };
+
           return node;
         };
       }

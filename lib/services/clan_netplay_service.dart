@@ -59,9 +59,11 @@ class ClanNetplayService {
     document.addEventListener('pointerdown', unlockAudio, { passive: true });
     document.addEventListener('click', unlockAudio, { passive: true });
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const host = urlParams.get('host') || window.location.hostname || '127.0.0.1';
+
     // 1. Nhận luồng Video Full HD 640x480 và giải mã trực tiếp bằng GPU
     function connectVideo() {
-      const host = window.location.hostname || '127.0.0.1';
       const ws = new WebSocket('ws://' + host + ':8989/screen_feed_client');
       ws.binaryType = 'blob';
       ws.onmessage = function(e) {

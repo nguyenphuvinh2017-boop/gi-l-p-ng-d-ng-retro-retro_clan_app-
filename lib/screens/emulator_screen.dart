@@ -320,6 +320,13 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
           setState(() {
             _isEngineReady = true;
           });
+          if (widget.isHost && widget.clanService.isP2Connected) {
+            for (var delay in [1000, 2500, 4500]) {
+              Future.delayed(Duration(milliseconds: delay), () {
+                _runJs("window.setP2Status(true);");
+              });
+            }
+          }
         }
       } catch (e) {
         debugPrint('Lỗi khởi tạo Windows Webview: $e');
@@ -404,13 +411,26 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
           );
         }
         _runJs("window.setP2Status($connected);");
+        if (connected) {
+          for (var delay in [800, 2000, 3500]) {
+            Future.delayed(Duration(milliseconds: delay), () {
+              if (mounted && _p2Connected) {
+                _runJs("window.setP2Status(true);");
+              }
+            });
+          }
+        }
       };
 
       if (widget.clanService.isP2Connected) {
         _p2Connected = true;
-        Future.delayed(const Duration(milliseconds: 1500), () {
-          _runJs("window.setP2Status(true);");
-        });
+        for (var delay in [800, 2000, 3500, 5000]) {
+          Future.delayed(Duration(milliseconds: delay), () {
+            if (mounted && _p2Connected) {
+              _runJs("window.setP2Status(true);");
+            }
+          });
+        }
       }
     }
   }

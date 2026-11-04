@@ -926,24 +926,29 @@
     }
 
 
-    window.setP2Status = function(connected) {
+    window.activatePlayer2 = function() {
+      try {
+        const emu = window.EJS_emulator;
+        const gm = emu && emu.gameManager;
+        const mod = (gm && gm.Module) || (emu && emu.Module);
+        if (mod) {
+          if (typeof mod._retro_set_controller_port_device === 'function') {
+            mod._retro_set_controller_port_device(1, 1);
+          } else if (typeof mod.ccall === 'function') {
+            mod.ccall('retro_set_controller_port_device', null, ['number', 'number'], [1, 1]);
+          }
+        }
+      } catch(e) {}
+    };
+
+    window.setP2Status = function(connected, enableStreaming = false) {
       p2Connected = connected;
       if (connected) {
-        startLiveScreenFeed();
-        startLiveAudioFeed();
-        // Cắm kết nối thiết bị tay cầm vào Port 1 (Player 2) trên lõi Libretro
-        try {
-          const emu = window.EJS_emulator;
-          const gm = emu && emu.gameManager;
-          const mod = (gm && gm.Module) || (emu && emu.Module);
-          if (mod) {
-            if (typeof mod._retro_set_controller_port_device === 'function') {
-              mod._retro_set_controller_port_device(1, 1);
-            } else if (typeof mod.ccall === 'function') {
-              mod.ccall('retro_set_controller_port_device', null, ['number', 'number'], [1, 1]);
-            }
-          }
-        } catch(e) {}
+        window.activatePlayer2();
+        if (enableStreaming) {
+          startLiveScreenFeed();
+          startLiveAudioFeed();
+        }
       } else {
         stopLiveScreenFeed();
         stopLiveAudioFeed();

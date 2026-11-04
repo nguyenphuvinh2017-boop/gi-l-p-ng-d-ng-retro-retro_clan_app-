@@ -207,10 +207,16 @@ class ClanNetplayService {
 
   // Callbacks
   Function(String btn, bool isDown)? onPlayer2InputReceived;
+  Function(String btn, bool isDown)? onPlayer1InputReceived;
+  Function(String gameTitle)? onGameStartedReceived;
   Function(bool connected)? onP2ConnectionChanged;
   Function(List<ClanRoomInfo> rooms)? onRoomsDiscovered;
   void Function()? onClientDisconnected;
+  void Function()? onResetReceived;
   Function(Uint8List frame)? onScreenFrameReceived;
+
+  bool isGameRunning = false;
+  String? currentRomPath;
 
   WebSocket? _screenFeedSocket;
   Timer? _subnetScanTimer;
@@ -459,6 +465,7 @@ class ClanNetplayService {
         'player': 2,
         'gameTitle': gameTitle,
         'status': 'connected',
+        'isGameRunning': isGameRunning,
       },
     ).serialize();
     _p2Socket?.add(welcome);
@@ -472,6 +479,8 @@ class ClanNetplayService {
           final btn = msg.payload['btn'] as String? ?? '';
           final isDown = msg.payload['down'] as bool? ?? false;
           onPlayer2InputReceived?.call(btn, isDown);
+        } else if (msg.type == LanMessageType.reset) {
+          onResetReceived?.call();
         }
       },
       onDone: () {
@@ -672,7 +681,7 @@ class ClanNetplayService {
   Future<bool> joinClanRoom({
     required String hostIp,
     int port = defaultWsPort,
-    required Function(String gameTitle) onJoined,
+    required Function(String gameTitle, bool isGameRunning) onJoined,
   }) async {
     lastJoinError = null;
     try {
@@ -704,7 +713,17 @@ class ClanNetplayService {
             if (msg != null) {
               if (msg.type == LanMessageType.joined) {
                 final title = msg.payload['gameTitle'] as String? ?? 'Game';
-                onJoined(title);
+                final isRunning = msg.payload['isGameRunning'] as bool? ?? false;
+                onJoined(title, isRunning);
+              } else if (msg.type == LanMessageType.start) {
+                final title = msg.payload['gameTitle'] as String? ?? 'Game';
+                onGameStartedReceived?.call(title);
+              } else if (msg.type == LanMessageType.input) {
+                final btn = msg.payload['btn'] as String? ?? '';
+                final isDown = msg.payload['down'] as bool? ?? false;
+                onPlayer1InputReceived?.call(btn, isDown);
+              } else if (msg.type == LanMessageType.reset) {
+                onResetReceived?.call();
               } else if (msg.type == LanMessageType.disconnect || msg.payload['status'] == 'host_exited') {
                 onClientDisconnected?.call();
               }
@@ -731,6 +750,50 @@ class ClanNetplayService {
     }
   }
 
+  /// Send button input from Host (Player 1) to Client (Player 2)
+  void sendHostInput(String button, bool isDown) {
+    if (_p2Socket != null && _p2Socket?.readyState == WebSocket.open) {
+      final msg = LanMessage(
+        type: LanMessageType.input,
+        payload: {
+          'player': 1,
+          'btn': button,
+          'down': isDown,
+        },
+      ).serialize();
+      _p2Socket?.add(msg);
+    }
+  }
+
+  /// Thông báo cho P2 vào game đồng bộ
+  void notifyGameStart(String gameTitle) {
+    isGameRunning = true;
+    _currentGameTitle = gameTitle;
+    if (_p2Socket != null && _p2Socket?.readyState == WebSocket.open) {
+      final msg = LanMessage(
+        type: LanMessageType.start,
+        payload: {
+          'gameTitle': gameTitle,
+          'status': 'game_started',
+        },
+      ).serialize();
+      _p2Socket?.add(msg);
+    }
+  }
+
+  /// Gửi lệnh reset ván chơi đồng bộ
+  void sendReset() {
+    final msg = LanMessage(
+      type: LanMessageType.reset,
+      payload: {'status': 'reset'},
+    ).serialize();
+    if (_p2Socket != null && _p2Socket?.readyState == WebSocket.open) {
+      _p2Socket?.add(msg);
+    } else if (_clientSocket != null && _clientSocket?.readyState == WebSocket.open) {
+      _clientSocket?.add(msg);
+    }
+  }
+
   /// Send button input from Client (Player 2) to Host
   void sendClientInput(String button, bool isDown) {
     if (_clientSocket != null && _clientSocket?.readyState == WebSocket.open) {
@@ -748,6 +811,7 @@ class ClanNetplayService {
 
   /// Thông báo cho P2 rằng Host đã thoát và ngắt các luồng stream
   Future<void> notifyHostExited() async {
+    isGameRunning = false;
     if (_p2Socket != null && _p2Socket?.readyState == WebSocket.open) {
       try {
         final exitMsg = LanMessage(

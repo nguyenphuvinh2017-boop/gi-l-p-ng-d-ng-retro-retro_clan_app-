@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,7 +8,6 @@ import '../services/clan_netplay_service.dart';
 import '../services/app_language.dart';
 import '../services/rom_manager.dart';
 import 'emulator_screen.dart';
-import 'wireless_pad_screen.dart';
 
 class ClanLobbyScreen extends StatefulWidget {
   final ClanNetplayService clanService;
@@ -31,6 +31,9 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
   final TextEditingController _manualIpController = TextEditingController();
   bool _isJoining = false;
   String? _lastConnectedHostIp;
+  bool _isP2WaitingGame = false;
+  String? _joinedGameTitle;
+  String? _joinedHostIp;
 
   @override
   void initState() {
@@ -136,6 +139,7 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
 
   void _launchHostGame() {
     if (_selectedGame != null) {
+      widget.clanService.notifyGameStart(_selectedGame!.title);
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -143,6 +147,57 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
             game: _selectedGame!,
             clanService: widget.clanService,
             isHost: true,
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _launchP2Game(String gameTitle, String hostIp) async {
+    if (!mounted) return;
+    setState(() {
+      _isJoining = false;
+      _isP2WaitingGame = false;
+      _lastConnectedHostIp = hostIp;
+    });
+    SharedPreferences.getInstance().then((p) {
+      p.setString('last_clan_host_ip', hostIp);
+      widget.clanService.lastKnownHostIp = hostIp;
+    }).catchError((_) {});
+
+    GameItem? matchedGame;
+    for (var g in _installedGames) {
+      if (g.title.toLowerCase() == gameTitle.toLowerCase() ||
+          g.title.toLowerCase().contains(gameTitle.toLowerCase()) ||
+          gameTitle.toLowerCase().contains(g.title.toLowerCase())) {
+        matchedGame = g;
+        break;
+      }
+    }
+    if (matchedGame == null && _installedGames.isNotEmpty) {
+      matchedGame = _installedGames.first;
+    }
+    if (matchedGame == null) {
+      final romDir = await RomManager.getRomDirectory();
+      final targetRom = File('${romDir.path}/neobombe.zip');
+      matchedGame = GameItem(
+        title: gameTitle.isNotEmpty ? gameTitle : 'Neo Bomberman',
+        console: 'arcade',
+        pageUrl: '',
+        localRomPath: targetRom.path,
+        isDownloaded: true,
+      );
+    }
+
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => EmulatorScreen(
+            game: matchedGame!,
+            clanService: widget.clanService,
+            isHost: false,
+            hostIp: hostIp,
           ),
         ),
       );
@@ -172,29 +227,31 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
       _isJoining = true;
     });
 
+    // Lắng nghe khi Chủ phòng bấm Vào Game
+    widget.clanService.onGameStartedReceived = (gameTitle) {
+      _launchP2Game(gameTitle, cleanIp);
+    };
+
     final success = await widget.clanService.joinClanRoom(
       hostIp: cleanIp,
       port: targetPort,
-      onJoined: (gameTitle) {
+      onJoined: (gameTitle, isGameRunning) {
         if (mounted) {
-          setState(() {
-            _isJoining = false;
-            _lastConnectedHostIp = cleanIp;
-          });
-          SharedPreferences.getInstance().then((p) {
-            p.setString('last_clan_host_ip', cleanIp);
-            widget.clanService.lastKnownHostIp = cleanIp;
-          }).catchError((_) {});
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => WirelessPadScreen(
-                clanService: widget.clanService,
-                gameTitle: gameTitle,
-                hostIp: cleanIp,
-              ),
-            ),
-          );
+          if (isGameRunning) {
+            _launchP2Game(gameTitle, cleanIp);
+          } else {
+            setState(() {
+              _isJoining = false;
+              _isP2WaitingGame = true;
+              _joinedGameTitle = gameTitle;
+              _joinedHostIp = cleanIp;
+              _lastConnectedHostIp = cleanIp;
+            });
+            SharedPreferences.getInstance().then((p) {
+              p.setString('last_clan_host_ip', cleanIp);
+              widget.clanService.lastKnownHostIp = cleanIp;
+            }).catchError((_) {});
+          }
         }
       },
     );
@@ -202,6 +259,7 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
     if (!success && mounted) {
       setState(() {
         _isJoining = false;
+        _isP2WaitingGame = false;
       });
       final errDetail = widget.clanService.lastJoinError != null
           ? '\nChi tiết: ${widget.clanService.lastJoinError}'
@@ -281,6 +339,92 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_isP2WaitingGame) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF132238),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF00E5FF), width: 1.5),
+              ),
+              child: Column(
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Color(0xFF00E676), size: 24),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Đã kết nối với Chủ phòng (P2)!',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '🎮 Game phòng: ${_joinedGameTitle ?? "Neo Bomberman"}\n🌐 IP Chủ phòng: ${_joinedHostIp ?? ""}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  const Row(
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00E5FF)),
+                      ),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Đang đợi Chủ phòng bấm Vào Game...',
+                          style: TextStyle(color: Color(0xFF00E5FF), fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00C853),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.play_arrow, color: Colors.white),
+                      label: const Text('VÀO GAME NGAY CÙNG CHỦ PHÒNG (P2)', style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () {
+                        if (_joinedGameTitle != null && _joinedHostIp != null) {
+                          _launchP2Game(_joinedGameTitle!, _joinedHostIp!);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white60,
+                        side: const BorderSide(color: Colors.white24),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: () {
+                        widget.clanService.stopAll();
+                        setState(() {
+                          _isP2WaitingGame = false;
+                        });
+                      },
+                      child: const Text('Hủy kết nối'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -596,6 +740,92 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_isP2WaitingGame) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF132238),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF00E5FF), width: 1.5),
+              ),
+              child: Column(
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Color(0xFF00E676), size: 24),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Đã kết nối với Chủ phòng (P2)!',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '🎮 Game phòng: ${_joinedGameTitle ?? "Neo Bomberman"}\n🌐 IP Chủ phòng: ${_joinedHostIp ?? ""}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  const Row(
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00E5FF)),
+                      ),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Đang đợi Chủ phòng bấm Vào Game...',
+                          style: TextStyle(color: Color(0xFF00E5FF), fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00C853),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.play_arrow, color: Colors.white),
+                      label: const Text('VÀO GAME NGAY CÙNG CHỦ PHÒNG (P2)', style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () {
+                        if (_joinedGameTitle != null && _joinedHostIp != null) {
+                          _launchP2Game(_joinedGameTitle!, _joinedHostIp!);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white60,
+                        side: const BorderSide(color: Colors.white24),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: () {
+                        widget.clanService.stopAll();
+                        setState(() {
+                          _isP2WaitingGame = false;
+                        });
+                      },
+                      child: const Text('Hủy kết nối'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (_lastConnectedHostIp != null && _lastConnectedHostIp!.isNotEmpty) ...[
             Container(
               margin: const EdgeInsets.only(bottom: 14),

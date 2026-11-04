@@ -6,6 +6,9 @@ enum LanMessageType {
   join,
   joined,
   input,
+  start,
+  sync,
+  reset,
   ping,
   pong,
   disconnect

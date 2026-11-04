@@ -19,12 +19,14 @@ class EmulatorScreen extends StatefulWidget {
   final GameItem game;
   final ClanNetplayService clanService;
   final bool isHost;
+  final String? hostIp;
 
   const EmulatorScreen({
     super.key,
     required this.game,
     required this.clanService,
     this.isHost = false,
+    this.hostIp,
   });
 
   @override
@@ -379,10 +381,15 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
       }
     }
 
-    // 4. Lắng nghe người chơi 2 qua LAN
+    // 4. Lắng nghe người chơi qua LAN (Input Netplay 60 FPS)
+    widget.clanService.currentRomPath = widget.game.localRomPath;
     if (widget.isHost) {
+      widget.clanService.isGameRunning = true;
       widget.clanService.onPlayer2InputReceived = (button, isDown) {
         _sendInput(2, button, isDown);
+      };
+      widget.clanService.onResetReceived = () {
+        _resetGame(false);
       };
 
       widget.clanService.onP2ConnectionChanged = (connected) {
@@ -410,12 +417,12 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
             ),
           );
         }
-        _runJs("window.setP2Status($connected);");
+        _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status($connected, false);");
         if (connected) {
           for (var delay in [800, 2000, 3500]) {
             Future.delayed(Duration(milliseconds: delay), () {
               if (mounted && _p2Connected) {
-                _runJs("window.setP2Status(true);");
+                _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status(true, false);");
               }
             });
           }
@@ -427,12 +434,99 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
         for (var delay in [800, 2000, 3500, 5000]) {
           Future.delayed(Duration(milliseconds: delay), () {
             if (mounted && _p2Connected) {
-              _runJs("window.setP2Status(true);");
+              _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status(true, false);");
             }
           });
         }
       }
+    } else {
+      // Client (Player 2)
+      widget.clanService.onPlayer1InputReceived = (button, isDown) {
+        _sendInput(1, button, isDown);
+      };
+      widget.clanService.onResetReceived = () {
+        _resetGame(false);
+      };
+      widget.clanService.onClientDisconnected = () {
+        if (mounted) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: Colors.orangeAccent,
+              duration: Duration(seconds: 4),
+              content: Row(
+                children: [
+                  Icon(Icons.link_off, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text('⚠️ Chủ phòng đã thoát ván chơi.', style: TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          );
+        }
+      };
+      for (var delay in [800, 2000, 3500, 5000]) {
+        Future.delayed(Duration(milliseconds: delay), () {
+          if (mounted) {
+            _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status(true, false);");
+          }
+        });
+      }
     }
+  }
+
+  void _handleLocalButtonEvent(String btn, bool isDown) {
+    final localPlayer = widget.isHost ? 1 : 2;
+    _sendInput(localPlayer, btn, isDown);
+    if (widget.isHost) {
+      widget.clanService.sendHostInput(btn, isDown);
+    } else {
+      widget.clanService.sendClientInput(btn, isDown);
+    }
+  }
+
+  void _resetGame([bool notifyPeer = true]) {
+    _runJs("if (window.EJS_emulator && window.EJS_emulator.restart) window.EJS_emulator.restart(); else location.reload();");
+    if (notifyPeer) {
+      widget.clanService.sendReset();
+    }
+  }
+
+  KeyEventResult _handleHardwareKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyUpEvent) {
+      return KeyEventResult.ignored;
+    }
+    final isDown = event is KeyDownEvent;
+    final key = event.logicalKey;
+
+    String? btn;
+    if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.keyW) {
+      btn = 'UP';
+    } else if (key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.keyS) {
+      btn = 'DOWN';
+    } else if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.keyA) {
+      btn = 'LEFT';
+    } else if (key == LogicalKeyboardKey.arrowRight || key == LogicalKeyboardKey.keyD) {
+      btn = 'RIGHT';
+    } else if (key == LogicalKeyboardKey.keyZ || key == LogicalKeyboardKey.keyJ || key == LogicalKeyboardKey.space) {
+      btn = 'A';
+    } else if (key == LogicalKeyboardKey.keyX || key == LogicalKeyboardKey.keyK) {
+      btn = 'B';
+    } else if (key == LogicalKeyboardKey.keyC || key == LogicalKeyboardKey.keyU) {
+      btn = 'C';
+    } else if (key == LogicalKeyboardKey.keyV || key == LogicalKeyboardKey.keyI) {
+      btn = 'D';
+    } else if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.digit1 || key == LogicalKeyboardKey.digit2) {
+      btn = 'START';
+    } else if (key == LogicalKeyboardKey.shiftLeft || key == LogicalKeyboardKey.shiftRight || key == LogicalKeyboardKey.digit5 || key == LogicalKeyboardKey.digit6) {
+      btn = 'SELECT';
+    }
+
+    if (btn != null) {
+      _handleLocalButtonEvent(btn, isDown);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   void _sendInput(int player, String button, bool isDown) {
@@ -941,7 +1035,11 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
           widget.clanService.notifyHostExited();
         }
       },
-      child: _isLandscape ? _buildLandscapeLayout() : _buildPortraitLayout(),
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: _handleHardwareKey,
+        child: _isLandscape ? _buildLandscapeLayout() : _buildPortraitLayout(),
+      ),
     );
   }
 
@@ -1030,7 +1128,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
                   _toggleRotation();
                   break;
                 case 'reload':
-                  _runJs("window.location.reload();");
+                  _resetGame();
                   break;
                 case 'settings':
                   _openSettingsDialog();
@@ -1155,7 +1253,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
                     });
                     _saveGamepadSettings();
                   },
-                  onButtonEvent: (btn, isDown) => _sendInput(1, btn, isDown),
+                  onButtonEvent: (btn, isDown) => _handleLocalButtonEvent(btn, isDown),
                   onOpenMenu: _openSettingsDialog,
                   onToggleSpeed: _toggleSpeed,
                   speedMultiplier: _speedMultiplier,
@@ -1212,7 +1310,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
                 });
                 _saveGamepadSettings();
               },
-              onButtonEvent: (btn, isDown) => _sendInput(1, btn, isDown),
+              onButtonEvent: (btn, isDown) => _handleLocalButtonEvent(btn, isDown),
               onOpenMenu: _openSettingsDialog,
               onToggleSpeed: _toggleSpeed,
               speedMultiplier: _speedMultiplier,

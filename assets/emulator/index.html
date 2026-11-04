@@ -685,9 +685,9 @@
     function getOffscreenCanvas() {
       if (!offscreenCanvas) {
         offscreenCanvas = document.createElement('canvas');
-        // Chuẩn độ phân giải 480x360 (Tỉ lệ 4:3 siêu tối ưu: dung lượng chỉ 12KB/frame, mã hóa cực nhanh <1ms)
-        offscreenCanvas.width = 480;
-        offscreenCanvas.height = 360;
+        // Chuẩn Full HD Retro 640x480: 2x Integer Scale sắc nét từng pixel, tỉ lệ chuẩn 4:3
+        offscreenCanvas.width = 640;
+        offscreenCanvas.height = 480;
         offscreenCtx = offscreenCanvas.getContext('2d', { alpha: false, desynchronized: true });
         offscreenCtx.imageSmoothingEnabled = false;
         offscreenCtx.webkitImageSmoothingEnabled = false;
@@ -697,7 +697,6 @@
     }
 
     let screenFeedRafId = null;
-    let frameSkipCounter = 0;
 
     function startLiveScreenFeed() {
       stopLiveScreenFeed();
@@ -721,12 +720,9 @@
           return;
         }
         screenFeedRafId = requestAnimationFrame(onFrameLoop);
-        frameSkipCounter++;
-        // Khóa nhịp cứng 30 FPS theo VSync của trình giả lập
-        if (frameSkipCounter % 2 !== 0) return;
         if (!screenFeedWs || screenFeedWs.readyState !== WebSocket.OPEN) return;
-        // Kiểm tra chống nghẽn buffer mạng LAN: Bỏ qua nếu socket chưa gửi xong frame trước (tránh ứ đọng gây trễ/lag)
-        if (screenFeedWs.bufferedAmount > 16384) return;
+        // Kiểm soát chống giật lag mạng: Nếu socket mạng chưa truyền xong frame trước, bỏ qua frame này (Zero Buffer-Bloat)
+        if (screenFeedWs.bufferedAmount > 0) return;
         if (isCapturingFrame) return;
 
         try {
@@ -737,18 +733,18 @@
 
           isCapturingFrame = true;
           const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas();
-          offCtx.drawImage(cvs, 0, 0, 480, 360);
+          offCtx.drawImage(cvs, 0, 0, 640, 480);
           offCvs.toBlob((blob) => {
             try {
               if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
-                if (screenFeedWs.bufferedAmount <= 16384) {
+                if (screenFeedWs.bufferedAmount === 0) {
                   screenFeedWs.send(blob);
                 }
               }
             } finally {
               isCapturingFrame = false;
             }
-          }, 'image/jpeg', 0.86);
+          }, 'image/jpeg', 0.85);
         } catch(e) {
           isCapturingFrame = false;
         }

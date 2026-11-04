@@ -29,7 +29,7 @@ class ClanNetplayService {
 </head>
 <body>
   <div id="tapPrompt" onclick="unlockAudio()">🔊 Bấm để mở âm thanh</div>
-  <canvas id="canvas" width="480" height="360"></canvas>
+  <canvas id="canvas" width="640" height="480"></canvas>
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
@@ -64,30 +64,31 @@ class ClanNetplayService {
     const urlParams = new URLSearchParams(window.location.search);
     const host = urlParams.get('host') || window.location.hostname || '127.0.0.1';
 
-    // 1. Nhận luồng Video trực tiếp siêu đồng bộ (Tự động xả bỏ khung hình trễ, loại bỏ 100% giật chậm)
-    let latestBlob = null;
-    let isDrawing = false;
+    // 1. Vòng lặp vẽ trực tiếp GPU 60 FPS khóa cứng theo VSync màn hình
+    let latestBmp = null;
+    let isDecoding = false;
 
-    function drawNextFrame() {
-      if (!latestBlob) {
-        isDrawing = false;
-        return;
+    function renderLoop() {
+      requestAnimationFrame(renderLoop);
+      if (latestBmp) {
+        ctx.drawImage(latestBmp, 0, 0, canvas.width, canvas.height);
+        latestBmp.close();
+        latestBmp = null;
       }
-      isDrawing = true;
-      const blob = latestBlob;
-      latestBlob = null; // Luôn xả sạch hàng đợi cũ, chỉ giữ khung hình mới nhất!
+    }
+    requestAnimationFrame(renderLoop);
 
+    // 2. Bộ giải mã bất đồng bộ cực nhanh (tự động xả bỏ khung hình trễ)
+    function decodeNext(blob) {
+      if (isDecoding) return;
+      isDecoding = true;
       if (window.createImageBitmap) {
         createImageBitmap(blob).then(bmp => {
-          ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-          bmp.close();
-          if (latestBlob) {
-            requestAnimationFrame(drawNextFrame);
-          } else {
-            isDrawing = false;
-          }
+          if (latestBmp) latestBmp.close();
+          latestBmp = bmp;
+          isDecoding = false;
         }).catch(() => {
-          isDrawing = false;
+          isDecoding = false;
         });
       } else {
         const img = new Image();
@@ -95,14 +96,10 @@ class ClanNetplayService {
         img.onload = () => {
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           URL.revokeObjectURL(img.src);
-          if (latestBlob) {
-            requestAnimationFrame(drawNextFrame);
-          } else {
-            isDrawing = false;
-          }
+          isDecoding = false;
         };
         img.onerror = () => {
-          isDrawing = false;
+          isDecoding = false;
         };
       }
     }
@@ -111,16 +108,13 @@ class ClanNetplayService {
       const ws = new WebSocket('ws://' + host + ':8989/screen_feed_client');
       ws.binaryType = 'blob';
       ws.onmessage = function(e) {
-        latestBlob = e.data; // Ghi đè khung hình mới nhất
-        if (!isDrawing) {
-          drawNextFrame();
-        }
+        decodeNext(e.data);
       };
       ws.onclose = () => setTimeout(connectVideo, 1000);
     }
     connectVideo();
 
-    // 2. Nhận luồng Âm thanh PCM 16-bit và phát mượt mà đồng bộ thời gian thực
+    // 3. Nhận luồng Âm thanh PCM 16-bit và phát mượt mà đồng bộ thời gian thực
     function connectAudio() {
       const ws = new WebSocket('ws://' + host + ':8989/audio_feed');
       ws.binaryType = 'arraybuffer';
@@ -147,8 +141,8 @@ class ClanNetplayService {
 
         const now = actx.currentTime;
         // Giữ buffer siêu ngắn để đồng bộ tuyệt đối với hình ảnh và hành động người chơi 1
-        if (nextAudioTime < now || nextAudioTime > now + 0.08) {
-          nextAudioTime = now + 0.015;
+        if (nextAudioTime < now || nextAudioTime > now + 0.06) {
+          nextAudioTime = now + 0.01;
         }
         src.start(nextAudioTime);
         nextAudioTime += buf.duration;

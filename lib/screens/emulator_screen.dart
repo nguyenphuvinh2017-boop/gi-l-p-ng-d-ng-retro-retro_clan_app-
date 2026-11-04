@@ -26,7 +26,7 @@ class EmulatorScreen extends StatefulWidget {
   State<EmulatorScreen> createState() => _EmulatorScreenState();
 }
 
-class _EmulatorScreenState extends State<EmulatorScreen> {
+class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObserver {
   HttpServer? _localServer;
   int _localPort = 0;
 
@@ -57,21 +57,33 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (Platform.isWindows) {
       _isLandscape = true;
+    } else {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     }
     _loadGamepadSettings();
     _startLocalServerAndEngine();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !Platform.isWindows) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _localServer?.close(force: true);
     try {
       _winController?.dispose();
     } catch (_) {}
     if (!Platform.isWindows) {
       try {
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
         SystemChrome.setPreferredOrientations([
           DeviceOrientation.portraitUp,
           DeviceOrientation.portraitDown,
@@ -294,6 +306,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> {
     });
     if (!Platform.isWindows) {
       try {
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
         if (_isLandscape) {
           SystemChrome.setPreferredOrientations([
             DeviceOrientation.landscapeLeft,

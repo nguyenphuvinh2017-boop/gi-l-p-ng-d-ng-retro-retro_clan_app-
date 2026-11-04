@@ -17,8 +17,9 @@ void main() async {
       DeviceOrientation.portraitDown,
     ]);
   }
-  await RomManager.ensureDefaultGames();
   runApp(const RetroClanApp());
+  // Tự động kiểm tra và giải nén game mặc định trong nền không chặn hiển thị
+  RomManager.ensureDefaultGames();
 }
 
 class RetroClanApp extends StatelessWidget {

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 import 'package:webview_windows/webview_windows.dart';
 import '../models/game_item.dart';
@@ -269,6 +270,29 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
             req.response.statusCode = HttpStatus.notFound;
           }
           await req.response.close();
+        } else if (path.startsWith('/cheats/')) {
+          req.response.headers.contentType = ContentType.json;
+          req.response.write(jsonEncode({
+            'Neo Bomberman': [
+              { 'desc': 'Tối đa số lượng bom (Max Bombs)', 'code': '010900C0' },
+              { 'desc': 'Tối đa tầm nổ (Max Fire Range)', 'code': '010901C0' },
+              { 'desc': 'Bất tử (Invincible)', 'code': '010105C0' }
+            ],
+            'neobombe': [
+              { 'desc': 'Tối đa số lượng bom (Max Bombs)', 'code': '010900C0' },
+              { 'desc': 'Tối đa tầm nổ (Max Fire Range)', 'code': '010901C0' },
+              { 'desc': 'Bất tử (Invincible)', 'code': '010105C0' }
+            ],
+            'Metal Slug 5': [
+              { 'desc': 'Bất tử mạng (Infinite Lives)', 'code': '010900C0' },
+              { 'desc': 'Vô hạn đạn súng (Infinite Ammo)', 'code': '010901C0' }
+            ],
+            'mslug5': [
+              { 'desc': 'Bất tử mạng (Infinite Lives)', 'code': '010900C0' },
+              { 'desc': 'Vô hạn đạn súng (Infinite Ammo)', 'code': '010901C0' }
+            ]
+          }));
+          await req.response.close();
         } else {
           req.response.statusCode = HttpStatus.notFound;
           await req.response.close();
@@ -326,6 +350,11 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
           ),
         )
         ..loadRequest(Uri.parse(targetUrl));
+
+      if (_mobileController?.platform is AndroidWebViewController) {
+        final androidCtrl = _mobileController!.platform as AndroidWebViewController;
+        androidCtrl.setMediaPlaybackRequiresUserGesture(false);
+      }
 
       if (mounted) {
         setState(() {

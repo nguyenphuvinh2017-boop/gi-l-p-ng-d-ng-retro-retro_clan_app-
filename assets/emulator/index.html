@@ -164,22 +164,6 @@
   </div>
 
   <script>
-    // Theo dõi và mở khóa toàn bộ AudioContext được tạo bởi WebAssembly / EmulatorJS / iOS WebKit
-    const capturedAudioContexts = [];
-    const OrigAudioContext = window.AudioContext || window.webkitAudioContext;
-    if (OrigAudioContext) {
-      const ProxiedAudioContext = function(...args) {
-        const instance = new OrigAudioContext(...args);
-        capturedAudioContexts.push(instance);
-        return instance;
-      };
-      ProxiedAudioContext.prototype = OrigAudioContext.prototype;
-      window.AudioContext = ProxiedAudioContext;
-      if (window.webkitAudioContext) {
-        window.webkitAudioContext = ProxiedAudioContext;
-      }
-    }
-
     const canvas = document.getElementById('nes-canvas');
     const ctx = canvas.getContext('2d');
     const statusOverlay = document.getElementById('status-overlay');
@@ -201,14 +185,14 @@
              str.includes('script error');
     }
 
-    // Bắt lỗi toàn cục hiển thị lên màn hình (Loại bỏ triệt để các cảnh báo âm thanh vô hại trên iOS WebKit)
+    // Bắt lỗi toàn cục hiển thị lên màn hình
     window.onerror = function(msg, url, line) {
       if (isIgnorableError(msg)) {
         console.warn('Ignored non-fatal error:', msg);
         return true;
       }
       if (loadingText) {
-        loadingText.innerHTML = '<span style="color:#ff6b6b">Lỗi: ' + msg + '</span>';
+        loadingText.innerHTML = '<span style="color:#ff6b6b">Lỗi: ' + msg + ' (Dòng ' + line + ')</span>';
         loadingBox.style.display = 'flex';
       }
     };
@@ -226,15 +210,9 @@
       }
     });
 
-    // Mở khóa âm thanh Web Audio / WebKit trên iOS ngay khi có chạm màn hình hoặc bấm nút
+    // Mở khóa âm thanh Web Audio / WebKit trên iOS và Android ngay khi có chạm màn hình hoặc bấm nút
     function unlockAudio() {
       try {
-        for (let i = 0; i < capturedAudioContexts.length; i++) {
-          const ac = capturedAudioContexts[i];
-          if (ac && ac.state === 'suspended') {
-            ac.resume().catch(function() {});
-          }
-        }
         if (audioCtx && audioCtx.state === 'suspended') {
           audioCtx.resume().catch(function() {});
         }
@@ -245,11 +223,15 @@
             window.EJS_emulator.audioContext.resume().catch(function() {});
           }
           if (window.EJS_emulator.gameManager) {
-            if (window.EJS_emulator.gameManager.audioCtx && window.EJS_emulator.gameManager.audioCtx.state === 'suspended') {
-              window.EJS_emulator.gameManager.audioCtx.resume().catch(function() {});
+            const gm = window.EJS_emulator.gameManager;
+            if (gm.audioCtx && gm.audioCtx.state === 'suspended') {
+              gm.audioCtx.resume().catch(function() {});
             }
-            if (typeof window.EJS_emulator.gameManager.setVolume === 'function') {
-              window.EJS_emulator.gameManager.setVolume(1.0);
+            if (gm.soundContext && gm.soundContext.state === 'suspended') {
+              gm.soundContext.resume().catch(function() {});
+            }
+            if (typeof gm.setVolume === 'function') {
+              gm.setVolume(1.0);
             }
           }
           if (window.EJS_emulator.paused && typeof window.EJS_emulator.play === 'function') {
@@ -474,6 +456,10 @@
         try {
           const emu = window.EJS_emulator;
           const gm = emu.gameManager;
+          // Button ID 27 là Fast Forward trong chuẩn EmulatorJS
+          if (gm && typeof gm.simulateInput === 'function') {
+            gm.simulateInput(0, 27, speedRate > 1 ? 1 : 0);
+          }
           if (typeof emu.setSpeed === 'function') {
             emu.setSpeed(speedRate);
           }
@@ -493,6 +479,11 @@
             emu.Module._set_fastforward(speedRate > 1 ? 1 : 0);
           }
         } catch(e) {}
+      }
+
+      // Giả lập phím Space (Hotkey tua nhanh mặc định của RetroArch)
+      if (isEmulatorJsMode) {
+        dispatchKey({ key: ' ', code: 'Space', keyCode: 32 }, speedRate > 1);
       }
     };
 
@@ -562,6 +553,29 @@
       return true;
     };
 
+    // Bộ nhớ RAM Freeze cho các mã cheat kiểu GameShark/ActionReplay
+    setInterval(function() {
+      if (!window.activeCheats || !window.EJS_emulator || !window.EJS_emulator.gameManager) return;
+      const gm = window.EJS_emulator.gameManager;
+      if (!gm.Module || !gm.Module.HEAPU8) return;
+      const heap = gm.Module.HEAPU8;
+      for (const code in window.activeCheats) {
+        if (!window.activeCheats[code]) continue;
+        if (code.length === 8 && code.startsWith('01')) {
+          const val = parseInt(code.substr(2, 2), 16);
+          const offset = parseInt(code.substr(4, 4), 16);
+          if (!isNaN(val) && !isNaN(offset)) {
+            for (let base of [0x100000, 0x200000, 0x000000]) {
+              const target = base + offset;
+              if (target < heap.length) {
+                heap[target] = val;
+              }
+            }
+          }
+        }
+      }
+    }, 200);
+
     window.setP2Status = function(connected) {
       p2Connected = connected;
     };
@@ -628,6 +642,12 @@
       window.EJS_threads = false;
       window.EJS_hideSettings = true;
       window.EJS_Buttons = false;
+      window.EJS_cheatPath = '/cheats/';
+      window.EJS_cheats = [
+        ["Tối đa số lượng bom (Max Bombs)", "010900C0"],
+        ["Tối đa tầm nổ (Max Fire Range)", "010901C0"],
+        ["Bất tử (Invincible)", "010105C0"]
+      ];
 
       // Chỉ nạp BIOS Neo Geo cho hệ máy Arcade / Neo Geo (FBNeo)
       if (isArcade) {

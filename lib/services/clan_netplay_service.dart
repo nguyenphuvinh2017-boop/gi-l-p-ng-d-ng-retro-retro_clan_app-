@@ -29,11 +29,13 @@ class ClanNetplayService {
 </head>
 <body>
   <div id="tapPrompt" onclick="unlockAudio()">🔊 Bấm để mở âm thanh</div>
-  <canvas id="canvas" width="640" height="480"></canvas>
+  <canvas id="canvas" width="960" height="720"></canvas>
   <script>
     const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d', { alpha: false });
+    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
     ctx.imageSmoothingEnabled = false;
+    ctx.webkitImageSmoothingEnabled = false;
+    ctx.mozImageSmoothingEnabled = false;
     const prompt = document.getElementById('tapPrompt');
 
     let actx = null;
@@ -374,16 +376,17 @@ class ClanNetplayService {
     _screenFeedSocket = socket;
     _screenFeedSocket?.listen(
       (data) {
-        if (_p2Socket != null && _p2Socket?.readyState == WebSocket.open) {
+        if (_screenClientSockets.isNotEmpty) {
+          for (var client in List<WebSocket>.from(_screenClientSockets)) {
+            try {
+              if (client.readyState == WebSocket.open) {
+                client.add(data);
+              }
+            } catch (_) {}
+          }
+        } else if (_p2Socket != null && _p2Socket?.readyState == WebSocket.open) {
           try {
             _p2Socket?.add(data);
-          } catch (_) {}
-        }
-        for (var client in List<WebSocket>.from(_screenClientSockets)) {
-          try {
-            if (client.readyState == WebSocket.open) {
-              client.add(data);
-            }
           } catch (_) {}
         }
       },

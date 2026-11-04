@@ -685,16 +685,19 @@
     function getOffscreenCanvas() {
       if (!offscreenCanvas) {
         offscreenCanvas = document.createElement('canvas');
-        // Chuẩn độ phân giải Full HD Retro 640x480: Siêu sắc nét 2x Integer Scale, hạt pixel rõ ràng
-        offscreenCanvas.width = 640;
-        offscreenCanvas.height = 480;
-        offscreenCtx = offscreenCanvas.getContext('2d', { alpha: false });
+        // Chuẩn độ phân giải Full HD Retro 960x720 (3x Integer Scale siêu nét, giữ nguyên tỉ lệ 4:3)
+        offscreenCanvas.width = 960;
+        offscreenCanvas.height = 720;
+        offscreenCtx = offscreenCanvas.getContext('2d', { alpha: false, desynchronized: true });
         offscreenCtx.imageSmoothingEnabled = false;
         offscreenCtx.webkitImageSmoothingEnabled = false;
         offscreenCtx.mozImageSmoothingEnabled = false;
       }
       return { canvas: offscreenCanvas, ctx: offscreenCtx };
     }
+
+    let screenFeedRafId = null;
+    let frameSkipCounter = 0;
 
     function startLiveScreenFeed() {
       stopLiveScreenFeed();
@@ -712,11 +715,15 @@
       }
       connectScreenWs();
 
-      screenFeedInterval = setInterval(() => {
+      function onFrameLoop() {
         if (!p2Connected) {
-          stopLiveScreenFeed();
+          screenFeedRafId = null;
           return;
         }
+        screenFeedRafId = requestAnimationFrame(onFrameLoop);
+        frameSkipCounter++;
+        // Khóa nhịp cứng 30 FPS theo VSync của trình giả lập, loại bỏ 100% hiện tượng lệch nhịp gây giật hình
+        if (frameSkipCounter % 2 !== 0) return;
         if (!screenFeedWs || screenFeedWs.readyState !== WebSocket.OPEN) return;
         if (isCapturingFrame) return;
 
@@ -728,7 +735,7 @@
 
           isCapturingFrame = true;
           const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas();
-          offCtx.drawImage(cvs, 0, 0, 640, 480);
+          offCtx.drawImage(cvs, 0, 0, 960, 720);
           offCvs.toBlob((blob) => {
             try {
               if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
@@ -737,14 +744,19 @@
             } finally {
               isCapturingFrame = false;
             }
-          }, 'image/jpeg', 0.80);
+          }, 'image/jpeg', 0.88);
         } catch(e) {
           isCapturingFrame = false;
         }
-      }, 30);
+      }
+      screenFeedRafId = requestAnimationFrame(onFrameLoop);
     }
 
     function stopLiveScreenFeed() {
+      if (screenFeedRafId) {
+        cancelAnimationFrame(screenFeedRafId);
+        screenFeedRafId = null;
+      }
       if (screenFeedInterval) {
         clearInterval(screenFeedInterval);
         screenFeedInterval = null;

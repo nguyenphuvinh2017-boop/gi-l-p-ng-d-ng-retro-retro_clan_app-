@@ -5,8 +5,9 @@ import 'screens/home_screen.dart';
 import 'screens/browse_retrostic_screen.dart';
 import 'screens/clan_lobby_screen.dart';
 import 'services/clan_netplay_service.dart';
+import 'services/rom_manager.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (!Platform.isWindows) {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -15,6 +16,7 @@ void main() {
       DeviceOrientation.portraitDown,
     ]);
   }
+  await RomManager.ensureDefaultGames();
   runApp(const RetroClanApp());
 }
 

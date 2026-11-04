@@ -159,6 +159,13 @@
       }
     };
 
+    window.addEventListener('unhandledrejection', function(event) {
+      if (loadingText) {
+        loadingText.innerHTML = '<span style="color:#ff6b6b">Lỗi: ' + (event.reason ? (event.reason.message || event.reason) : 'Promise rejected') + '</span>';
+        loadingBox.style.display = 'flex';
+      }
+    });
+
     const SCREEN_WIDTH = 256;
     const SCREEN_HEIGHT = 240;
 
@@ -380,7 +387,7 @@
       window.EJS_core = (coreType === 'arcade' || coreType === 'neogeo' || coreType === 'mame') ? 'arcade' : coreType;
       window.EJS_gameUrl = romUrl;
       window.EJS_gameName = rawRomName; // Bắt buộc là tên driver chuẩn 'neobombe' để FBNeo nạp game
-      window.EJS_pathtodata = 'https://cdn.emulatorjs.org/4.2.3/data/';
+      window.EJS_pathtodata = '/data/'; // Sử dụng Same-Origin proxy để tương thích 100% với iOS Safari & Android
       window.EJS_startOnLoaded = true;
       window.EJS_color = '#D4AF37';
       window.EJS_threads = false; // Đảm bảo tương thích 100% không yêu cầu SharedArrayBuffer
@@ -422,9 +429,15 @@
       };
 
       const script = document.createElement('script');
-      script.src = 'https://cdn.emulatorjs.org/4.2.3/data/loader.js';
+      script.src = '/data/loader.js';
       script.onerror = function() {
-        loadingText.innerHTML = '<span style="color:#ff6b6b">Lỗi kết nối CDN EmulatorJS.<br>Vui lòng kiểm tra lại mạng Internet.</span>';
+        // Fallback sang CDN trực tiếp nếu proxy local gặp sự cố
+        const fallbackScript = document.createElement('script');
+        fallbackScript.src = 'https://cdn.emulatorjs.org/4.2.3/data/loader.js';
+        fallbackScript.onerror = function() {
+          loadingText.innerHTML = '<span style="color:#ff6b6b">Lỗi kết nối CDN EmulatorJS.<br>Vui lòng kiểm tra lại mạng Internet.</span>';
+        };
+        document.body.appendChild(fallbackScript);
       };
       document.body.appendChild(script);
     }

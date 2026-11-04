@@ -27,22 +27,46 @@ class ClanNetplayService {
   bool get isP2Connected => _p2Socket != null && _p2Socket?.readyState == WebSocket.open;
   bool get isClientConnected => _clientSocket != null && _clientSocket?.readyState == WebSocket.open;
 
-  /// Get Local Wi-Fi IPv4 address
+  /// Lấy địa chỉ IP mạng Wi-Fi nội bộ chính xác (ưu tiên card Wi-Fi en0/wlan0, loại bỏ 4G di động)
   Future<String> getLocalIp() async {
     try {
       final interfaces = await NetworkInterface.list(
         type: InternetAddressType.IPv4,
         includeLinkLocal: false,
       );
-      for (var interface in interfaces) {
-        for (var addr in interface.addresses) {
-          if (!addr.isLoopback && (addr.address.startsWith('192.168.') || addr.address.startsWith('10.') || addr.address.startsWith('172.'))) {
+
+      // 1. Ưu tiên cao nhất: Interface Wi-Fi thực thụ (en0 trên iOS, wlan0 trên Android, Wi-Fi trên Windows)
+      for (var iface in interfaces) {
+        final name = iface.name.toLowerCase();
+        final isWifi = name.contains('wlan') || name.contains('en0') || name.contains('wi-fi') || name.contains('wifi') || name.contains('eth');
+        if (isWifi) {
+          for (var addr in iface.addresses) {
+            if (!addr.isLoopback && (addr.address.startsWith('192.168.') || addr.address.startsWith('10.') || addr.address.startsWith('172.'))) {
+              return addr.address;
+            }
+          }
+        }
+      }
+
+      // 2. Ưu tiên dải mạng Wi-Fi gia đình thông dụng 192.168.x.x
+      for (var iface in interfaces) {
+        for (var addr in iface.addresses) {
+          if (!addr.isLoopback && addr.address.startsWith('192.168.')) {
             return addr.address;
           }
         }
       }
-      if (interfaces.isNotEmpty && interfaces.first.addresses.isNotEmpty) {
-        return interfaces.first.addresses.first.address;
+
+      // 3. Các dải private LAN khác (loại bỏ mạng di động nếu có thể)
+      for (var iface in interfaces) {
+        final name = iface.name.toLowerCase();
+        if (!name.contains('pdp_ip') && !name.contains('rmnet') && !name.contains('cellular')) {
+          for (var addr in iface.addresses) {
+            if (!addr.isLoopback && !addr.address.startsWith('127.')) {
+              return addr.address;
+            }
+          }
+        }
       }
     } catch (e) {
       print('Local IP fetch error: $e');
@@ -73,9 +97,23 @@ class ClanNetplayService {
         if (WebSocketTransformer.isUpgradeRequest(request)) {
           final socket = await WebSocketTransformer.upgrade(request);
           _handleP2Connection(socket, gameTitle);
+        } else if (request.uri.path == '/status' || request.uri.path == '/info') {
+          request.response.headers.contentType = ContentType.json;
+          request.response.headers.add('Access-Control-Allow-Origin', '*');
+          request.response.write(jsonEncode({
+            'status': 'ok',
+            'roomName': roomName,
+            'gameTitle': gameTitle,
+            'hostIp': localIp,
+            'port': port,
+            'p2Connected': isP2Connected,
+          }));
+          await request.response.close();
         } else {
-          request.response.statusCode = HttpStatus.forbidden;
-          request.response.close();
+          request.response.statusCode = HttpStatus.ok;
+          request.response.headers.add('Access-Control-Allow-Origin', '*');
+          request.response.write('RetroClan Host Active');
+          await request.response.close();
         }
       });
 
@@ -161,6 +199,7 @@ class ClanNetplayService {
   /// Start discovering Clan Rooms on local Wi-Fi
   Future<void> startDiscovery() async {
     _discoveredRooms.clear();
+    // 1. Quét song song bằng UDP Broadcast
     try {
       _udpSocket?.close();
       _udpSocket = await RawDatagramSocket.bind(
@@ -200,12 +239,72 @@ class ClanNetplayService {
       _cleanupTimer?.cancel();
       _cleanupTimer = Timer.periodic(const Duration(seconds: 4), (_) {
         final now = DateTime.now();
-        _discoveredRooms.removeWhere((_, room) => now.difference(room.lastSeen).inSeconds > 5);
+        _discoveredRooms.removeWhere((_, room) => now.difference(room.lastSeen).inSeconds > 10);
         onRoomsDiscovered?.call(_discoveredRooms.values.toList());
       });
     } catch (e) {
       print('Discovery error: $e');
     }
+
+    // 2. Quét song song bằng HTTP subnet probe (Đảm bảo 100% tìm thấy trên iOS và Router chặn UDP)
+    scanSubnet();
+  }
+
+  /// Quét nhanh dải mạng nội bộ qua HTTP (dành cho iOS và bộ định tuyến chặn UDP Broadcast)
+  Future<void> scanSubnet() async {
+    try {
+      final localIp = await getLocalIp();
+      if (!localIp.contains('.')) return;
+      final parts = localIp.split('.');
+      if (parts.length != 4) return;
+      final prefix = '${parts[0]}.${parts[1]}.${parts[2]}';
+      final currentHostNum = int.tryParse(parts[3]) ?? 0;
+
+      final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 600);
+
+      // Quét các IP lân cận trước
+      final List<int> ipSuffixes = [];
+      for (int delta = 1; delta <= 30; delta++) {
+        if (currentHostNum - delta >= 1) ipSuffixes.add(currentHostNum - delta);
+        if (currentHostNum + delta <= 254) ipSuffixes.add(currentHostNum + delta);
+      }
+      for (int i = 1; i <= 254; i++) {
+        if (!ipSuffixes.contains(i) && i != currentHostNum) {
+          ipSuffixes.add(i);
+        }
+      }
+
+      const batchSize = 30;
+      for (int i = 0; i < ipSuffixes.length; i += batchSize) {
+        final batch = ipSuffixes.skip(i).take(batchSize);
+        await Future.wait(batch.map((suffix) async {
+          final targetIp = '$prefix.$suffix';
+          try {
+            final uri = Uri.parse('http://$targetIp:$defaultWsPort/status');
+            final req = await client.getUrl(uri);
+            final res = await req.close();
+            if (res.statusCode == HttpStatus.ok) {
+              final body = await res.transform(utf8.decoder).join();
+              final json = jsonDecode(body) as Map<String, dynamic>;
+              final hostIp = json['hostIp'] as String? ?? targetIp;
+              final roomName = json['roomName'] as String? ?? 'Phòng Clan';
+              final gameTitle = json['gameTitle'] as String? ?? 'Game';
+              final port = json['port'] as int? ?? defaultWsPort;
+
+              _discoveredRooms[hostIp] = ClanRoomInfo(
+                roomName: roomName,
+                gameTitle: gameTitle,
+                hostIp: hostIp,
+                port: port,
+                lastSeen: DateTime.now(),
+              );
+              onRoomsDiscovered?.call(_discoveredRooms.values.toList());
+            }
+          } catch (_) {}
+        }));
+      }
+      client.close();
+    } catch (_) {}
   }
 
   /// Connect to Host as Player 2
@@ -215,9 +314,10 @@ class ClanNetplayService {
     required Function(String gameTitle) onJoined,
   }) async {
     try {
-      final wsUrl = 'ws://$hostIp:$port';
+      final cleanIp = hostIp.trim();
+      final wsUrl = 'ws://$cleanIp:$port';
       print('Connecting to $wsUrl');
-      _clientSocket = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 4));
+      _clientSocket = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 8));
 
       _clientSocket?.listen(
         (data) {

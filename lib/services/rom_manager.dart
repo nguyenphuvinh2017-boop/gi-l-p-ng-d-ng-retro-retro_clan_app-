@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,10 +21,63 @@ class RomManager {
     return romDir;
   }
 
-  /// Lấy danh sách game đã thêm vào thư viện (Bắt đầu hoàn toàn rỗng)
+  /// Tự động nạp game mặc định (Neo Bomberman) và BIOS Neo Geo sẵn sàng chơi ngay
+  static Future<void> ensureDefaultGames() async {
+    try {
+      final romDir = await getRomDirectory();
+
+      // 1. Sao chép BIOS neogeo.zip nếu chưa có
+      final biosFile = File('${romDir.path}/neogeo.zip');
+      if (!await biosFile.exists()) {
+        try {
+          final biosData = await rootBundle.load('assets/emulator/neogeo.zip');
+          await biosFile.writeAsBytes(biosData.buffer.asUint8List(), flush: true);
+        } catch (_) {}
+      }
+
+      // 2. Sao chép ROM Neo Bomberman nếu chưa có
+      final targetRom = File('${romDir.path}/neobombe.zip');
+      if (!await targetRom.exists()) {
+        try {
+          final romData = await rootBundle.load('assets/emulator/neobombe.zip');
+          await targetRom.writeAsBytes(romData.buffer.asUint8List(), flush: true);
+        } catch (_) {}
+      }
+
+      // 3. Đưa Neo Bomberman vào thư viện nếu chưa có
+      final prefs = await SharedPreferences.getInstance();
+      final rawList = prefs.getStringList(_prefsKey) ?? [];
+      final hasBomber = rawList.any((s) => s.toLowerCase().contains('bomber') || s.toLowerCase().contains('neobombe'));
+
+      if (!hasBomber && await targetRom.exists()) {
+        final length = await targetRom.length();
+        final defaultGame = GameItem(
+          title: 'Neo Bomberman',
+          console: 'arcade',
+          pageUrl: '',
+          coverUrl: 'https://raw.githubusercontent.com/libretro-thumbnails/SNK_-_Neo_Geo/master/Named_Boxarts/Neo%20Bomberman.png',
+          inGamePreviewUrl: 'https://raw.githubusercontent.com/libretro-thumbnails/SNK_-_Neo_Geo/master/Named_Snaps/Neo%20Bomberman.png',
+          localRomPath: targetRom.path,
+          isDownloaded: true,
+          fileSize: '${(length / (1024 * 1024)).toStringAsFixed(2)} MB',
+        );
+        await saveGameToLibrary(defaultGame);
+      }
+    } catch (e) {
+      // Bỏ qua nếu có lỗi nạp assets ngầm
+    }
+  }
+
+  /// Lấy danh sách game đã thêm vào thư viện (Bắt đầu với game sẵn có nếu máy mới)
   static Future<List<GameItem>> getInstalledGames() async {
     final prefs = await SharedPreferences.getInstance();
-    final rawList = prefs.getStringList(_prefsKey) ?? [];
+    var rawList = prefs.getStringList(_prefsKey) ?? [];
+
+    if (rawList.isEmpty) {
+      await ensureDefaultGames();
+      rawList = prefs.getStringList(_prefsKey) ?? [];
+    }
+
     final List<GameItem> list = [];
 
     for (var str in rawList) {

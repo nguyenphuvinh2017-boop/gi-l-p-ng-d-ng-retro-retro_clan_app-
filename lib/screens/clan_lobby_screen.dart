@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/game_item.dart';
 import '../models/lan_message.dart';
 import '../services/clan_netplay_service.dart';
@@ -37,12 +38,22 @@ class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProv
 
   void _initData() async {
     _localIp = await widget.clanService.getLocalIp();
+    await RomManager.ensureDefaultGames();
     final games = await RomManager.getInstalledGames();
     if (mounted) {
       setState(() {
         _installedGames = games;
-        if (games.isNotEmpty) _selectedGame = games.first;
+        if (games.isNotEmpty) {
+          _selectedGame = games.first;
+        }
       });
+    }
+
+    if (_localIp.contains('.')) {
+      final parts = _localIp.split('.');
+      if (parts.length == 4 && _manualIpController.text.isEmpty) {
+        _manualIpController.text = '${parts[0]}.${parts[1]}.${parts[2]}.';
+      }
     }
 
     widget.clanService.onRoomsDiscovered = (rooms) {
@@ -120,12 +131,23 @@ class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProv
   }
 
   Future<void> _joinHost(String hostIp) async {
+    String cleanIp = hostIp.trim();
+    if (cleanIp.isEmpty) return;
+
+    // Hỗ trợ nhập số cuối (ví dụ nhập 15 tự mở rộng thành 192.168.1.15)
+    if (int.tryParse(cleanIp) != null) {
+      final parts = _localIp.split('.');
+      if (parts.length == 4) {
+        cleanIp = '${parts[0]}.${parts[1]}.${parts[2]}.$cleanIp';
+      }
+    }
+
     setState(() {
       _isJoining = true;
     });
 
     final success = await widget.clanService.joinClanRoom(
-      hostIp: hostIp,
+      hostIp: cleanIp,
       onJoined: (gameTitle) {
         if (mounted) {
           setState(() {
@@ -137,7 +159,7 @@ class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProv
               builder: (_) => WirelessPadScreen(
                 clanService: widget.clanService,
                 gameTitle: gameTitle,
-                hostIp: hostIp,
+                hostIp: cleanIp,
               ),
             ),
           );
@@ -152,7 +174,7 @@ class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProv
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: Colors.redAccent,
-          content: Text('Không thể kết nối tới $hostIp. Hãy đảm bảo 2 máy cùng bắt 1 mạng Wi-Fi!'),
+          content: Text('Không thể kết nối tới $cleanIp. Hãy đảm bảo 2 máy cùng bắt 1 mạng Wi-Fi!'),
         ),
       );
     }
@@ -318,6 +340,56 @@ class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProv
           ),
 
           const SizedBox(height: 24),
+          if (_isHosting) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.greenAccent.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'IP Chủ phòng: $_localIp:8989',
+                          style: const TextStyle(
+                            color: Colors.greenAccent,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.copy, color: Colors.greenAccent, size: 20),
+                        tooltip: 'Sao chép IP',
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: _localIp));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              backgroundColor: Colors.green,
+                              content: Text('Đã sao chép IP máy chủ: $_localIp'),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Bảo bạn của bạn mở Tab "VÀO PHÒNG (P2)" trên máy họ, gõ số: ${_localIp.split('.').last} (hoặc $_localIp) rồi bấm Kết nối!',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
           if (!_isHosting)
             SizedBox(
               width: double.infinity,
@@ -398,23 +470,34 @@ class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProv
                 color: const Color(0xFF1B1B22),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Center(
+              child: Center(
                 child: Column(
                   children: [
-                    SizedBox(
+                    const SizedBox(
                       width: 28,
                       height: 28,
                       child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFFFF2A55)),
                     ),
-                    SizedBox(height: 16),
-                    Text(
+                    const SizedBox(height: 16),
+                    const Text(
                       'Đang quét tìm phòng Clan trên mạng Wi-Fi...',
                       style: TextStyle(color: Colors.white70),
                     ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Hãy chắc chắn rằng máy chủ phòng đã bấm "MỞ PHÒNG CLAN"',
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Hãy chắc chắn máy chủ phòng đã bấm "MỞ PHÒNG CLAN"',
                       style: TextStyle(color: Colors.white38, fontSize: 12),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.greenAccent,
+                        side: BorderSide(color: Colors.greenAccent.withValues(alpha: 0.5)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      icon: const Icon(Icons.radar, size: 16),
+                      label: const Text('Quét toàn mạng Wi-Fi'),
+                      onPressed: () => widget.clanService.startDiscovery(),
                     ),
                   ],
                 ),
@@ -459,7 +542,7 @@ class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProv
                   controller: _manualIpController,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
-                    hintText: 'Ví dụ: 192.168.1.15',
+                    hintText: 'Ví dụ: 192.168.1.15 hoặc chỉ gõ 15',
                     hintStyle: const TextStyle(color: Colors.white38),
                     filled: true,
                     fillColor: const Color(0xFF1B1B22),
@@ -481,9 +564,20 @@ class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProv
                         final ip = _manualIpController.text.trim();
                         if (ip.isNotEmpty) _joinHost(ip);
                       },
-                child: const Text('Kết nối', style: TextStyle(fontWeight: FontWeight.bold)),
+                child: _isJoining
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      )
+                    : const Text('Kết nối', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '💡 Mẹo: Bạn chỉ cần gõ số cuối (ví dụ chủ phòng là 192.168.1.15 thì chỉ cần gõ "15") rồi bấm Kết nối!',
+            style: TextStyle(color: Colors.white38, fontSize: 11),
           ),
         ],
       ),

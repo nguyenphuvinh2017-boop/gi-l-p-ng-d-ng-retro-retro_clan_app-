@@ -10,14 +10,37 @@
 		<true/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>localhost</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+			<key>127.0.0.1</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
 	</dict>
+
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Retro Clan Play needs access to your local network to discover and connect with other players on the same Wi-Fi.</string>
+	<string>Retro Clan Play cần quyền truy cập mạng cục bộ để kết nối và chơi chung giữa Android và iOS qua cùng Wi-Fi.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_retroclan._tcp</string>
 		<string>_retroclan._udp</string>
 	</array>
+
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>

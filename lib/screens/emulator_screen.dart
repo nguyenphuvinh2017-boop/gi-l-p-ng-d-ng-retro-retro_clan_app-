@@ -29,6 +29,7 @@ class EmulatorScreen extends StatefulWidget {
 class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObserver {
   HttpServer? _localServer;
   int _localPort = 0;
+  HttpClient? _proxyHttpClient;
 
   WebviewController? _winController;
   WebViewController? _mobileController;
@@ -78,6 +79,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _localServer?.close(force: true);
+    _proxyHttpClient?.close(force: true);
     try {
       _winController?.dispose();
     } catch (_) {}
@@ -135,6 +137,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
 
     // 2. Khởi chạy máy chủ HTTP nội bộ 127.0.0.1
     try {
+      _proxyHttpClient = HttpClient();
       _localServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       _localPort = _localServer!.port;
 
@@ -144,7 +147,8 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
         req.response.headers.add('Access-Control-Allow-Origin', '*');
         req.response.headers.add('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
         req.response.headers.add('Access-Control-Allow-Headers', '*');
-        req.response.headers.add('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
+        req.response.headers.add('Access-Control-Expose-Headers', '*');
+        req.response.headers.add('Cross-Origin-Resource-Policy', 'cross-origin');
 
         if (req.method == 'OPTIONS') {
           req.response.statusCode = HttpStatus.ok;
@@ -191,6 +195,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
           }
           await req.response.close();
         } else if (path == '/$romFileName' || path == '/rom.data' || path.endsWith('.zip') || path.endsWith('.nes') || path.endsWith('.bin')) {
+          bool served = false;
           if (widget.game.localRomPath != null) {
             final file = File(widget.game.localRomPath!);
             if (await file.exists()) {
@@ -207,7 +212,48 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
               }
 
               await req.response.addStream(file.openRead());
+              served = true;
             }
+          }
+
+          if (!served) {
+            // Nạp từ asset neobombe.zip làm cứu cánh dự phòng
+            try {
+              final fallbackData = await rootBundle.load('assets/emulator/neobombe.zip');
+              req.response.headers.contentType = ContentType.binary;
+              req.response.headers.contentLength = fallbackData.lengthInBytes;
+              req.response.headers.add('Accept-Ranges', 'bytes');
+              req.response.headers.add('Content-Disposition', 'inline; filename="neobombe.zip"');
+              if (req.method != 'HEAD') {
+                req.response.add(fallbackData.buffer.asUint8List());
+              }
+              served = true;
+            } catch (_) {}
+          }
+
+          if (!served) {
+            req.response.statusCode = HttpStatus.notFound;
+          }
+          await req.response.close();
+        } else if (path.startsWith('/data/')) {
+          // Same-Origin Proxy cho EmulatorJS assets trên iOS và Android
+          try {
+            final subPath = path.substring(6); // Bỏ tiền tố '/data/'
+            final remoteUri = Uri.parse('https://cdn.emulatorjs.org/4.2.3/data/$subPath');
+            final remoteReq = await (_proxyHttpClient ?? HttpClient()).getUrl(remoteUri);
+            final remoteRes = await remoteReq.close();
+            req.response.statusCode = remoteRes.statusCode;
+            if (remoteRes.headers.contentType != null) {
+              req.response.headers.contentType = remoteRes.headers.contentType;
+            }
+            if (remoteRes.contentLength > 0) {
+              req.response.headers.contentLength = remoteRes.contentLength;
+            }
+            if (req.method != 'HEAD') {
+              await req.response.addStream(remoteRes);
+            }
+          } catch (e) {
+            req.response.statusCode = HttpStatus.notFound;
           }
           await req.response.close();
         } else {
@@ -243,6 +289,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
         ..setBackgroundColor(Colors.black)
         ..setNavigationDelegate(
           NavigationDelegate(
+            onNavigationRequest: (request) => NavigationDecision.navigate,
             onWebResourceError: (err) {
               debugPrint('WebView Error: ${err.description} (${err.errorCode})');
             },

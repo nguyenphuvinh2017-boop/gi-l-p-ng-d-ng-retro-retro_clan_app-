@@ -55,7 +55,7 @@ class ClanNetplayService {
       align-items: center;
       justify-content: center;
     }
-    #remoteVideo, #canvas {
+    #canvas {
       width: 100vw;
       height: 100vh;
       max-width: 100%;
@@ -77,7 +77,6 @@ class ClanNetplayService {
 </head>
 <body>
   <div id="tapPrompt" onclick="unlockAudio()">🔊 Bấm để mở âm thanh</div>
-  <video id="remoteVideo" autoplay playsinline style="display:none;"></video>
   <canvas id="canvas"></canvas>
   <script>
     const canvas = document.getElementById('canvas');
@@ -85,16 +84,13 @@ class ClanNetplayService {
     ctx.imageSmoothingEnabled = false;
     ctx.webkitImageSmoothingEnabled = false;
     ctx.mozImageSmoothingEnabled = false;
-    const remoteVideo = document.getElementById('remoteVideo');
     const prompt = document.getElementById('tapPrompt');
 
     let actx = null;
     let nextAudioTime = 0;
-    let isWebRtcActive = false;
 
     function unlockAudio() {
       try {
-        if (remoteVideo) remoteVideo.play().catch(function(){});
         if (!actx) {
           const AC = window.AudioContext || window.webkitAudioContext;
           actx = new AC({ sampleRate: 44100 });
@@ -102,7 +98,9 @@ class ClanNetplayService {
         if (actx && actx.state === 'suspended') {
           actx.resume();
         }
-        if (prompt) prompt.style.display = 'none';
+        if (actx && actx.state === 'running' && prompt) {
+          prompt.style.display = 'none';
+        }
       } catch(e) {}
     }
 
@@ -114,56 +112,15 @@ class ClanNetplayService {
     const urlParams = new URLSearchParams(window.location.search);
     const host = urlParams.get('host') || window.location.hostname || '127.0.0.1';
 
-    let pc = null;
-    function initWebRTC(ws) {
-      try {
-        if (pc) { try { pc.close(); } catch(e) {} }
-        pc = new RTCPeerConnection({ iceServers: [] });
-        pc.ontrack = function(event) {
-          if (event.streams && event.streams[0]) {
-            remoteVideo.srcObject = event.streams[0];
-            remoteVideo.style.display = 'block';
-            canvas.style.display = 'none';
-            isWebRtcActive = true;
-            remoteVideo.play().catch(function() {});
-            if (prompt) prompt.style.display = 'none';
-          }
-        };
-        pc.onicecandidate = function(event) {
-          if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'webrtc_candidate', candidate: event.candidate }));
-          }
-        };
-      } catch(e) {}
-    }
-
-    // 1. Nhận luồng Video trực tiếp qua WebRTC 60 FPS & Fallback Canvas
+    // 1. Nhận luồng Video trực tiếp 45 FPS không chờ ACK (Zero-Latency, Mượt mà)
     function connectVideo() {
       const ws = new WebSocket('ws://' + host + ':8989/screen_feed_client');
       ws.binaryType = 'blob';
-      ws.onmessage = function(e) {
-        if (typeof e.data === 'string') {
-          try {
-            const msg = JSON.parse(e.data);
-            if (msg.type === 'webrtc_offer') {
-              initWebRTC(ws);
-              pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)).then(function() {
-                return pc.createAnswer();
-              }).then(function(answer) {
-                return pc.setLocalDescription(answer);
-              }).then(function() {
-                if (ws.readyState === WebSocket.OPEN) {
-                  ws.send(JSON.stringify({ type: 'webrtc_answer', sdp: pc.localDescription }));
-                }
-              }).catch(function(err) {});
-            } else if (msg.type === 'webrtc_candidate' && pc) {
-              pc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(function() {});
-            }
-          } catch(err) {}
-          return;
-        }
+      let isRendering = false;
 
-        if (isWebRtcActive) return;
+      ws.onmessage = function(e) {
+        if (isRendering) return;
+        isRendering = true;
 
         if (window.createImageBitmap) {
           createImageBitmap(e.data).then(function(bmp) {
@@ -174,9 +131,9 @@ class ClanNetplayService {
             }
             ctx.drawImage(bmp, 0, 0);
             bmp.close();
-            if (ws.readyState === WebSocket.OPEN) ws.send('1');
+            isRendering = false;
           }).catch(function() {
-            if (ws.readyState === WebSocket.OPEN) ws.send('1');
+            isRendering = false;
           });
         } else {
           const img = new Image();
@@ -189,10 +146,10 @@ class ClanNetplayService {
             }
             ctx.drawImage(img, 0, 0);
             URL.revokeObjectURL(img.src);
-            if (ws.readyState === WebSocket.OPEN) ws.send('1');
+            isRendering = false;
           };
           img.onerror = function() {
-            if (ws.readyState === WebSocket.OPEN) ws.send('1');
+            isRendering = false;
           };
         }
       };
@@ -200,12 +157,11 @@ class ClanNetplayService {
     }
     connectVideo();
 
-    // 2. Nhận luồng Âm thanh PCM 16-bit nguyên bản 44.1kHz (cho Fallback)
+    // 2. Nhận luồng Âm thanh PCM 16-bit nguyên bản 44.1kHz
     function connectAudio() {
       const ws = new WebSocket('ws://' + host + ':8989/audio_feed');
       ws.binaryType = 'arraybuffer';
       ws.onmessage = function(e) {
-        if (isWebRtcActive) return;
         if (!actx) unlockAudio();
         if (actx && actx.state === 'suspended') actx.resume();
         if (!actx || actx.state !== 'running') return;

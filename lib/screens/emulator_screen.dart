@@ -418,12 +418,12 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
             ),
           );
         }
-        _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status($connected); if (window.startStateSyncHost) window.startStateSyncHost();");
+        _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status($connected);");
         if (connected) {
           for (var delay in [800, 2000, 3500]) {
             Future.delayed(Duration(milliseconds: delay), () {
               if (mounted && _p2Connected) {
-                _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status(true); if (window.startStateSyncHost) window.startStateSyncHost();");
+                _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status(true);");
               }
             });
           }
@@ -435,7 +435,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
         for (var delay in [800, 2000, 3500, 5000]) {
           Future.delayed(Duration(milliseconds: delay), () {
             if (mounted && _p2Connected) {
-              _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status(true); if (window.startStateSyncHost) window.startStateSyncHost();");
+              _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status(true);");
             }
           });
         }
@@ -481,9 +481,6 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
     _sendInput(localPlayer, btn, isDown);
     if (widget.isHost) {
       widget.clanService.sendHostInput(btn, isDown);
-      if (isDown && (btn == 'START' || btn == 'SELECT')) {
-        _runJs("if (window.sendStateSnapshot) window.sendStateSnapshot();");
-      }
     } else {
       widget.clanService.sendClientInput(btn, isDown);
     }

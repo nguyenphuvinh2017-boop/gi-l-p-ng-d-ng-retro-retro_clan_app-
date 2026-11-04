@@ -363,6 +363,20 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
 
         return Stack(
           children: [
+            // LƯỚI Ô VUÔNG CĂN CHỈNH KHI BẬT CHẾ ĐỘ CHỈNH NÚT (isEditMode)
+            if (widget.isEditMode)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _GridOverlayPainter(
+                      gridSize: 26.0 * s,
+                      primaryColor: const Color(0xFF00E5FF),
+                      centerColor: const Color(0xFFFFD700),
+                    ),
+                  ),
+                ),
+              ),
+
             // 0. NÚT CHUYỂN ĐỔI NHANH GIỮA XOAY 360° & PHÍM Ô VUÔNG 4 HƯỚNG
             if (widget.onToggleJoystickType != null)
               _buildDraggableButton(
@@ -678,8 +692,14 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
         onPanUpdate: (details) {
           if (_draggingButtonId != id) return;
           final totalDelta = details.globalPosition - _dragStartPointer;
-          final newX = (_dragStartButtonPos.dx + totalDelta.dx).clamp(0.0, max(0.0, W - width)).toDouble();
-          final newY = (_dragStartButtonPos.dy + totalDelta.dy).clamp(0.0, max(0.0, H - height)).toDouble();
+          double newX = (_dragStartButtonPos.dx + totalDelta.dx).clamp(0.0, max(0.0, W - width)).toDouble();
+          double newY = (_dragStartButtonPos.dy + totalDelta.dy).clamp(0.0, max(0.0, H - height)).toDouble();
+
+          // Snap nhẹ theo bước lưới 6px giúp phím tự động bắt thẳng hàng nhau
+          const snapStep = 6.0;
+          newX = (newX / snapStep).round() * snapStep;
+          newY = (newY / snapStep).round() * snapStep;
+
           setState(() {
             _localOffsets[id] = Offset(newX / W, newY / H);
           });
@@ -1585,5 +1605,66 @@ class _ArcadeCircleBtnState extends State<_ArcadeCircleBtn> {
         ),
       ),
     );
+  }
+}
+
+
+/// Lớp vẽ lưới ô vuông căn chỉnh trực quan khi ở chế độ Edit
+class _GridOverlayPainter extends CustomPainter {
+  final double gridSize;
+  final Color primaryColor;
+  final Color centerColor;
+
+  _GridOverlayPainter({
+    required this.gridSize,
+    required this.primaryColor,
+    required this.centerColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bgPaint = Paint()..color = Colors.black.withValues(alpha: 0.28);
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
+
+    final minorPaint = Paint()
+      ..color = primaryColor.withValues(alpha: 0.12)
+      ..strokeWidth = 1.0;
+
+    final majorPaint = Paint()
+      ..color = primaryColor.withValues(alpha: 0.32)
+      ..strokeWidth = 1.5;
+
+    final centerPaint = Paint()
+      ..color = centerColor.withValues(alpha: 0.55)
+      ..strokeWidth = 1.8;
+
+    final step = gridSize.clamp(18.0, 48.0);
+
+    int colIndex = 0;
+    for (double x = 0; x <= size.width; x += step) {
+      final isMajor = colIndex % 4 == 0;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), isMajor ? majorPaint : minorPaint);
+      colIndex++;
+    }
+
+    int rowIndex = 0;
+    for (double y = 0; y <= size.height; y += step) {
+      final isMajor = rowIndex % 4 == 0;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), isMajor ? majorPaint : minorPaint);
+      rowIndex++;
+    }
+
+    final midX = size.width / 2;
+    final midY = size.height / 2;
+    canvas.drawLine(Offset(midX, 0), Offset(midX, size.height), centerPaint);
+    canvas.drawLine(Offset(0, midY), Offset(size.width, midY), centerPaint);
+
+    final dotPaint = Paint()..color = centerColor;
+    canvas.drawCircle(Offset(midX, midY), 4.0, dotPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GridOverlayPainter oldDelegate) {
+    return oldDelegate.gridSize != gridSize || oldDelegate.primaryColor != primaryColor;
   }
 }

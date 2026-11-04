@@ -44,6 +44,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
 
   // Cấu hình Nút & Cần gạt
   double _buttonScale = 1.0;
+  double _buttonPercent = 75.0;
   String _buttonLayout = 'arcade6';
   String _joystickType = 'analog360';
   String _joystickSensitivity = 'normal';
@@ -435,6 +436,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
 
       setState(() {
         _buttonScale = prefs.getDouble('arcade_btn_scale') ?? 1.0;
+        _buttonPercent = prefs.getDouble('arcade_btn_percent') ?? ((_buttonScale - 0.4) / 0.8 * 100.0).clamp(1.0, 100.0);
         _buttonLayout = prefs.getString('arcade_btn_layout') ?? 'arcade6';
         _joystickType = prefs.getString('arcade_joy_type') ?? 'dpadSquare4';
         _joystickSensitivity = prefs.getString('arcade_joy_sens') ?? 'normal';
@@ -470,6 +472,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble('arcade_btn_scale', _buttonScale);
+      await prefs.setDouble('arcade_btn_percent', _buttonPercent);
       await prefs.setString('arcade_btn_layout', _buttonLayout);
       await prefs.setString('arcade_joy_type', _joystickType);
       await prefs.setString('arcade_joy_sens', _joystickSensitivity);
@@ -492,6 +495,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
       _customButtonsLand = null;
       _customButtonsPort = null;
       _buttonScale = 1.0;
+      _buttonPercent = 75.0;
       _buttonLayout = 'arcade6';
       _joystickType = 'analog360';
     });
@@ -522,6 +526,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
         onLayoutChanged: (scale, layout) {
           setState(() {
             _buttonScale = scale;
+            _buttonPercent = ((scale - 0.4) / 0.8 * 100.0).clamp(1.0, 100.0);
             _buttonLayout = layout;
           });
           _saveGamepadSettings();
@@ -881,22 +886,73 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
                 ),
                 const SizedBox(width: 14),
 
-                // Chọn cỡ nút
-                const Text('Cỡ: ', style: TextStyle(color: Colors.white60, fontSize: 11)),
-                _buildEditChip('80%', _buttonScale == 0.8, () {
-                  setState(() => _buttonScale = 0.8);
-                  _saveGamepadSettings();
-                }),
-                const SizedBox(width: 4),
-                _buildEditChip('100%', _buttonScale == 1.0, () {
-                  setState(() => _buttonScale = 1.0);
-                  _saveGamepadSettings();
-                }),
-                const SizedBox(width: 4),
-                _buildEditChip('120%', _buttonScale == 1.2, () {
-                  setState(() => _buttonScale = 1.2);
-                  _saveGamepadSettings();
-                }),
+                // Thanh trượt kéo phần trăm cỡ nút từ 1 đến 100
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF261D15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFD4AF37).withValues(alpha: 0.5), width: 1.0),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.straighten, color: Color(0xFFD4AF37), size: 16),
+                      const SizedBox(width: 6),
+                      Text(
+                        'CỠ NÚT: %',
+                        style: const TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.w900, fontSize: 11),
+                      ),
+                      SizedBox(
+                        width: 120,
+                        child: SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 3,
+                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                            overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                            activeTrackColor: const Color(0xFFD4AF37),
+                            inactiveTrackColor: Colors.black54,
+                            thumbColor: const Color(0xFFFFD700),
+                          ),
+                          child: Slider(
+                            value: _buttonPercent.clamp(1.0, 100.0),
+                            min: 1.0,
+                            max: 100.0,
+                            divisions: 99,
+                            onChanged: (val) {
+                              setState(() {
+                                _buttonPercent = val;
+                                _buttonScale = 0.4 + (val / 100.0) * 0.8;
+                              });
+                            },
+                            onChangeEnd: (_) => _saveGamepadSettings(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // Huy hiệu thông báo lưới ô vuông căn chỉnh
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFF00E5FF), width: 1.0),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.grid_on, color: Color(0xFF00E5FF), size: 13),
+                      SizedBox(width: 4),
+                      Text(
+                        'LƯỚI CĂN CHỈNH: BẬT',
+                        style: TextStyle(color: Color(0xFF00E5FF), fontWeight: FontWeight.bold, fontSize: 10),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(width: 12),
 
                 // Chọn kiểu bố trí nút

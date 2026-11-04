@@ -50,7 +50,8 @@ class _ArcadeSettingsDialogState extends State<ArcadeSettingsDialog> {
   bool _autoResume = true;
 
   // Cấu hình Nút & Cần gạt
-  late String _buttonSize;
+  double _buttonPercent = 75.0;
+  
   late String _buttonLayout;
   late String _joystickType;
   late String _joystickSensitivity;
@@ -68,13 +69,8 @@ class _ArcadeSettingsDialogState extends State<ArcadeSettingsDialog> {
   @override
   void initState() {
     super.initState();
-    if (widget.currentButtonScale <= 0.85) {
-      _buttonSize = 'Nhỏ (80%)';
-    } else if (widget.currentButtonScale >= 1.15) {
-      _buttonSize = 'Lớn (120%)';
-    } else {
-      _buttonSize = 'Vừa (100%)';
-    }
+    _buttonPercent = ((widget.currentButtonScale - 0.4) / 0.8 * 100.0).clamp(1.0, 100.0);
+
 
     if (widget.currentButtonLayout == 'arcade4Row') {
       _buttonLayout = 'Arcade 4 nút thẳng hàng';
@@ -376,22 +372,41 @@ class _ArcadeSettingsDialogState extends State<ArcadeSettingsDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Kích thước cụm nút:', style: TextStyle(color: Color(0xFFD4AF37), fontSize: 13, fontWeight: FontWeight.bold)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Kích thước cụm nút (1% - 100%):', style: TextStyle(color: Color(0xFFD4AF37), fontSize: 13, fontWeight: FontWeight.bold)),
+                  Text('%', style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 13, fontWeight: FontWeight.bold)),
+                ],
+              ),
               const SizedBox(height: 6),
-              for (var sz in ['Nhỏ (80%)', 'Vừa (100%)', 'Lớn (120%)'])
-                RadioListTile<String>(
-                  title: Text(sz, style: const TextStyle(color: Colors.white, fontSize: 12)),
-                  value: sz,
-                  groupValue: _buttonSize,
-                  dense: true,
-                  activeColor: const Color(0xFFD4AF37),
-                  onChanged: (val) {
-                    if (val != null) {
-                      setDialogState(() => _buttonSize = val);
-                      setState(() => _buttonSize = val);
-                    }
-                  },
-                ),
+              Row(
+                children: [
+                  const Text('1%', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(ctx).copyWith(
+                        trackHeight: 4,
+                        activeTrackColor: const Color(0xFFD4AF37),
+                        inactiveTrackColor: Colors.black45,
+                        thumbColor: const Color(0xFFFFD700),
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                      ),
+                      child: Slider(
+                        value: _buttonPercent.clamp(1.0, 100.0),
+                        min: 1.0,
+                        max: 100.0,
+                        divisions: 99,
+                        onChanged: (val) {
+                          setDialogState(() => _buttonPercent = val);
+                          setState(() => _buttonPercent = val);
+                        },
+                      ),
+                    ),
+                  ),
+                  const Text('100%', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                ],
+              ),
               const SizedBox(height: 10),
               const Text('Kiểu bố trí nút:', style: TextStyle(color: Color(0xFFD4AF37), fontSize: 13, fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
@@ -422,9 +437,7 @@ class _ArcadeSettingsDialogState extends State<ArcadeSettingsDialog> {
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD4AF37), foregroundColor: Colors.black),
               onPressed: () {
                 Navigator.pop(ctx);
-                double scale = 1.0;
-                if (_buttonSize == 'Nhỏ (80%)') scale = 0.8;
-                if (_buttonSize == 'Lớn (120%)') scale = 1.2;
+                double scale = 0.4 + (_buttonPercent / 100.0) * 0.8;
 
                 String layoutCode = 'arcade6';
                 if (_buttonLayout == 'Arcade 4 nút thẳng hàng') layoutCode = 'arcade4Row';

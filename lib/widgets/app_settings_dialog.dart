@@ -15,6 +15,7 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> with SingleTicker
   // Controllers & Values
   final TextEditingController _nameController = TextEditingController();
   double _buttonScale = 1.0;
+  double _buttonPercent = 75.0;
   String _buttonLayout = 'arcade6';
   String _joystickType = 'analog360';
   String _joystickSensitivity = 'normal';
@@ -42,6 +43,7 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> with SingleTicker
       final prefs = await SharedPreferences.getInstance();
       _nameController.text = prefs.getString('clan_player_name') ?? prefs.getString('player_name') ?? 'Player_1';
       _buttonScale = prefs.getDouble('arcade_btn_scale') ?? 1.0;
+      _buttonPercent = prefs.getDouble('arcade_btn_percent') ?? ((_buttonScale - 0.4) / 0.8 * 100.0).clamp(1.0, 100.0);
       _buttonLayout = prefs.getString('arcade_btn_layout') ?? 'arcade6';
       _joystickType = prefs.getString('arcade_joy_type') ?? 'analog360';
       _joystickSensitivity = prefs.getString('arcade_joy_sens') ?? 'normal';
@@ -76,6 +78,7 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> with SingleTicker
     await prefs.setString('clan_player_name', _nameController.text.trim().isEmpty ? 'Player_1' : _nameController.text.trim());
     await prefs.setString('player_name', _nameController.text.trim().isEmpty ? 'Player_1' : _nameController.text.trim());
     await prefs.setDouble('arcade_btn_scale', _buttonScale);
+    await prefs.setDouble('arcade_btn_percent', _buttonPercent);
     await prefs.setString('arcade_btn_layout', _buttonLayout);
     await prefs.setString('arcade_joy_type', _joystickType);
     await prefs.setString('arcade_joy_sens', _joystickSensitivity);
@@ -249,28 +252,47 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> with SingleTicker
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Kích thước nút
-        _buildSectionHeader('KÍCH THƯỚC NÚT BẤM (SCALE)'),
+        // Kích thước nút kéo thanh phần trăm từ 1 đến 100%
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionHeader('KÍCH THƯỚC NÚT BẤM (1% - 100%)'),
+            Text(
+              '%',
+              style: const TextStyle(color: Color(0xFF00E5FF), fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+          ],
+        ),
         const SizedBox(height: 8),
         Row(
           children: [
-            _buildChoiceChip(
-              label: 'Nhỏ (80%)',
-              selected: _buttonScale <= 0.85,
-              onSelected: () => setState(() => _buttonScale = 0.8),
+            const Text('1%', style: TextStyle(color: Colors.white38, fontSize: 11)),
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 4,
+                  activeTrackColor: const Color(0xFF29A3FF),
+                  inactiveTrackColor: const Color(0xFF1B2A4A),
+                  thumbColor: const Color(0xFF29A3FF),
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                ),
+                child: Slider(
+                  value: _buttonPercent.clamp(1.0, 100.0),
+                  min: 1.0,
+                  max: 100.0,
+                  divisions: 99,
+                  label: '%',
+                  onChanged: (val) {
+                    setState(() {
+                      _buttonPercent = val;
+                      _buttonScale = 0.4 + (val / 100.0) * 0.8;
+                    });
+                  },
+                ),
+              ),
             ),
-            const SizedBox(width: 8),
-            _buildChoiceChip(
-              label: 'Vừa (100%)',
-              selected: _buttonScale > 0.85 && _buttonScale < 1.15,
-              onSelected: () => setState(() => _buttonScale = 1.0),
-            ),
-            const SizedBox(width: 8),
-            _buildChoiceChip(
-              label: 'Lớn (120%)',
-              selected: _buttonScale >= 1.15,
-              onSelected: () => setState(() => _buttonScale = 1.2),
-            ),
+            const Text('100%', style: TextStyle(color: Colors.white38, fontSize: 11)),
           ],
         ),
         const SizedBox(height: 18),
@@ -471,34 +493,7 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> with SingleTicker
     );
   }
 
-  Widget _buildChoiceChip({required String label, required bool selected, required VoidCallback onSelected}) {
-    return Expanded(
-      child: InkWell(
-        onTap: onSelected,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFF1E88E5) : const Color(0xFF131C31),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: selected ? const Color(0xFF64B5F6) : const Color(0xFF2A3C63),
-              width: selected ? 1.5 : 1.0,
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: selected ? Colors.white : Colors.white70,
-              fontSize: 12,
-              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+
 
   Widget _buildRadioRow({
     required String title,

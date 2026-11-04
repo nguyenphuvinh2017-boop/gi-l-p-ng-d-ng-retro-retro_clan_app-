@@ -365,10 +365,11 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF1B1B22),
+              color: const Color(0xFF131C31),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: _isHosting ? Colors.greenAccent.withValues(alpha: 0.4) : Colors.white12,
+                color: _isHosting ? const Color(0xFF00E5FF).withValues(alpha: 0.4) : Colors.white12,
+                width: 1.2,
               ),
             ),
             child: Column(
@@ -376,34 +377,43 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Phòng mạng LAN:', style: TextStyle(color: Colors.white70)),
-                    Text(
-                      _isHosting ? 'ĐANG MỞ (Đang phát tín hiệu Wi-Fi)' : 'Đang đóng',
-                      style: TextStyle(
-                        color: _isHosting ? Colors.greenAccent : Colors.white38,
-                        fontWeight: FontWeight.bold,
+                    const Text('Phòng mạng LAN:', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _isHosting ? const Color(0xFF00E5FF).withValues(alpha: 0.15) : Colors.white10,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _isHosting ? 'ĐANG MỞ (Phát Wi-Fi)' : 'Đang đóng',
+                        style: TextStyle(
+                          color: _isHosting ? const Color(0xFF00E5FF) : Colors.white38,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const Divider(color: Color(0xFF1F2D4A), height: 18),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Người chơi 2 (Clan):', style: TextStyle(color: Colors.white70)),
+                    const Text('Người chơi 2 (Clan):', style: TextStyle(color: Colors.white70, fontSize: 13)),
                     Row(
                       children: [
                         Icon(
                           _isPlayer2Connected ? Icons.check_circle : Icons.radio_button_unchecked,
-                          color: _isPlayer2Connected ? Colors.greenAccent : Colors.orangeAccent,
+                          color: _isPlayer2Connected ? const Color(0xFF00E676) : const Color(0xFFFFB300),
                           size: 16,
                         ),
                         const SizedBox(width: 6),
                         Text(
                           _isPlayer2Connected ? 'Đã kết nối & Sẵn sàng' : (_isHosting ? 'Đang đợi bạn vào...' : 'Chưa kết nối'),
                           style: TextStyle(
-                            color: _isPlayer2Connected ? Colors.greenAccent : Colors.white70,
+                            color: _isPlayer2Connected ? const Color(0xFF00E676) : (_isHosting ? const Color(0xFFFFD54F) : Colors.white54),
                             fontWeight: FontWeight.bold,
+                            fontSize: 12,
                           ),
                         ),
                       ],
@@ -418,11 +428,11 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
           if (_isHosting) ...[
             Container(
               margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.greenAccent.withValues(alpha: 0.1),
+                color: const Color(0xFF131D33),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.3)),
+                border: Border.all(color: const Color(0xFF29A3FF).withValues(alpha: 0.5), width: 1.2),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -430,24 +440,35 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Expanded(
-                        child: Text(
-                          'IP Chủ phòng: $_localIp:8989',
-                          style: const TextStyle(
-                            color: Colors.greenAccent,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                      Row(
+                        children: [
+                          const Icon(Icons.wifi_tethering, color: Color(0xFF00E5FF), size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'IP Chủ phòng: $_localIp:8989',
+                            style: const TextStyle(
+                              color: Color(0xFF00E5FF),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              fontFamily: 'monospace',
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.copy, color: Colors.greenAccent, size: 20),
-                        tooltip: 'Sao chép IP',
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E88E5),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: const Icon(Icons.copy, size: 14, color: Colors.white),
+                        label: const Text('Sao chép', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
                         onPressed: () {
                           Clipboard.setData(ClipboardData(text: _localIp));
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              backgroundColor: Colors.green,
+                              backgroundColor: const Color(0xFF131C31),
                               content: Text('Đã sao chép IP máy chủ: $_localIp'),
                             ),
                           );
@@ -455,7 +476,7 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 8),
                   Text(
                     'Bảo bạn của bạn mở Tab "VÀO PHÒNG (P2)" trên máy họ, gõ số: ${_localIp.split('.').last} (hoặc $_localIp) rồi bấm Kết nối!',
                     style: const TextStyle(color: Colors.white70, fontSize: 12),
@@ -471,11 +492,13 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFF2A55),
+                  foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 3,
                 ),
-                icon: const Icon(Icons.wifi_tethering),
-                label: const Text('MỞ PHÒNG CLAN (LAN)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                icon: const Icon(Icons.wifi_tethering, color: Colors.white),
+                label: const Text('MỞ PHÒNG CLAN (LAN)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
                 onPressed: _startHostRoom,
               ),
             )
@@ -484,12 +507,14 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
               width: double.infinity,
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
+                  backgroundColor: const Color(0xFF00C853),
+                  foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 3,
                 ),
-                icon: const Icon(Icons.play_arrow),
-                label: const Text('VÀO GAME VỚI VAI TRÒ CHỦ PHÒNG', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                icon: const Icon(Icons.sports_esports, color: Colors.white, size: 22),
+                label: const Text('VÀO GAME VỚI VAI TRÒ CHỦ PHÒNG', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white, letterSpacing: 0.5)),
                 onPressed: _launchHostGame,
               ),
             ),
@@ -597,9 +622,9 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
                     title: Text(room.gameTitle, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     subtitle: Text('IP Chủ phòng: ${room.hostIp}:${room.port}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
                     trailing: ElevatedButton(
-                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF2A55)),
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF2A55), foregroundColor: Colors.white),
                       onPressed: _isJoining ? null : () => _joinHost(room.hostIp, port: room.port),
-                      child: const Text('Vào làm P2', style: TextStyle(fontWeight: FontWeight.bold)),
+                      child: const Text('Vào làm P2', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
                     ),
                   ),
                 );

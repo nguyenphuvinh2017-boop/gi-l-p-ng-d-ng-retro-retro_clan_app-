@@ -21,8 +21,12 @@ class RomManager {
     return romDir;
   }
 
+  static bool _isEnsuring = false;
+
   /// Tự động nạp game mặc định (Neo Bomberman) và BIOS Neo Geo sẵn sàng chơi ngay
   static Future<void> ensureDefaultGames() async {
+    if (_isEnsuring) return;
+    _isEnsuring = true;
     try {
       final romDir = await getRomDirectory();
 
@@ -65,6 +69,8 @@ class RomManager {
       }
     } catch (e) {
       // Bỏ qua nếu có lỗi nạp assets ngầm
+    } finally {
+      _isEnsuring = false;
     }
   }
 

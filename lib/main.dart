@@ -5,7 +5,6 @@ import 'screens/home_screen.dart';
 import 'screens/browse_retrostic_screen.dart';
 import 'screens/clan_lobby_screen.dart';
 import 'services/clan_netplay_service.dart';
-import 'services/rom_manager.dart';
 import 'widgets/app_settings_dialog.dart';
 
 void main() async {
@@ -18,8 +17,6 @@ void main() async {
     ]);
   }
   runApp(const RetroClanApp());
-  // Tự động kiểm tra và giải nén game mặc định trong nền không chặn hiển thị
-  RomManager.ensureDefaultGames();
 }
 
 class RetroClanApp extends StatelessWidget {

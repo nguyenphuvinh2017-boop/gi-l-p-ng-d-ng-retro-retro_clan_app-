@@ -68,38 +68,47 @@ class HomeScreenState extends State<HomeScreen> {
     setState(() {
       _isLoading = true;
     });
-    final games = await RomManager.getInstalledGames();
-    final List<GameItem> updatedList = [];
+    try {
+      final games = await RomManager.getInstalledGames();
+      final List<GameItem> updatedList = [];
 
-    for (var g in games) {
-      final isShort = g.title.length <= 8 && !g.title.contains(' ');
-      final noImages = g.coverUrl == null || g.inGamePreviewUrl == null || g.coverUrl!.isEmpty || g.inGamePreviewUrl!.isEmpty;
-      final isRawCover = g.coverUrl != null && (g.coverUrl!.contains('.zip') || g.coverUrl!.endsWith('mslug5.png'));
+      for (var g in games) {
+        final isShort = g.title.length <= 8 && !g.title.contains(' ');
+        final noImages = g.coverUrl == null || g.inGamePreviewUrl == null || g.coverUrl!.isEmpty || g.inGamePreviewUrl!.isEmpty;
+        final isRawCover = g.coverUrl != null && (g.coverUrl!.contains('.zip') || g.coverUrl!.endsWith('mslug5.png'));
 
-      if (noImages || isShort || isRawCover) {
-        final raw = g.localRomPath != null ? g.localRomPath!.split(RegExp(r'[/\\]')).last : g.title;
-        final meta = RetroMetadataService.resolveMetadata(
-          rawFileName: raw,
-          defaultConsole: g.console,
-        );
-        final updated = g.copyWith(
-          title: meta['title'] ?? g.title,
-          console: meta['console'] ?? g.console,
-          coverUrl: meta['cover'] ?? g.coverUrl,
-          inGamePreviewUrl: meta['snap'] ?? g.inGamePreviewUrl,
-        );
-        updatedList.add(updated);
-        await RomManager.saveGameToLibrary(updated);
-      } else {
-        updatedList.add(g);
+        if (noImages || isShort || isRawCover) {
+          final raw = g.localRomPath != null ? g.localRomPath!.split(RegExp(r'[/\\]')).last : g.title;
+          final meta = RetroMetadataService.resolveMetadata(
+            rawFileName: raw,
+            defaultConsole: g.console,
+          );
+          final updated = g.copyWith(
+            title: meta['title'] ?? g.title,
+            console: meta['console'] ?? g.console,
+            coverUrl: meta['cover'] ?? g.coverUrl,
+            inGamePreviewUrl: meta['snap'] ?? g.inGamePreviewUrl,
+          );
+          updatedList.add(updated);
+          await RomManager.saveGameToLibrary(updated);
+        } else {
+          updatedList.add(g);
+        }
       }
-    }
 
-    if (mounted) {
-      setState(() {
-        _allGames = updatedList;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _allGames = updatedList;
+        });
+      }
+    } catch (e) {
+      debugPrint('Lỗi nạp thư viện: ');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 

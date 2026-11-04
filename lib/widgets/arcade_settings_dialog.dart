@@ -80,11 +80,17 @@ class _ArcadeSettingsDialogState extends State<ArcadeSettingsDialog> {
       _buttonLayout = 'Arcade 4 nút thẳng hàng';
     } else if (widget.currentButtonLayout == 'arcade4Arc') {
       _buttonLayout = 'Vòng cung cổ điển';
+    } else if (widget.currentButtonLayout == 'arcadeSquare2x2') {
+      _buttonLayout = 'Dạng ô vuông 2x2 (A-B-C-D)';
+    } else if (widget.currentButtonLayout == 'arcadeDiamond') {
+      _buttonLayout = 'Dạng chữ thập (Lên - Xuống - Trái - Phải)';
     } else {
       _buttonLayout = 'Arcade 6 nút (Chuẩn Neo Geo)';
     }
 
-    if (widget.currentJoystickType == 'dpad4') {
+    if (widget.currentJoystickType == 'dpadSquare4') {
+      _joystickType = 'Phím ô vuông 4 hướng riêng biệt (Lên - Xuống - Trái - Phải)';
+    } else if (widget.currentJoystickType == 'dpad4') {
       _joystickType = 'Cụm phím chữ thập D-Pad 4 hướng';
     } else {
       _joystickType = 'Cần gạt xoay tròn 360°';
@@ -389,7 +395,13 @@ class _ArcadeSettingsDialogState extends State<ArcadeSettingsDialog> {
               const SizedBox(height: 10),
               const Text('Kiểu bố trí nút:', style: TextStyle(color: Color(0xFFD4AF37), fontSize: 13, fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
-              for (var lo in ['Arcade 6 nút (Chuẩn Neo Geo)', 'Arcade 4 nút thẳng hàng', 'Vòng cung cổ điển'])
+              for (var lo in [
+                'Arcade 6 nút (Chuẩn Neo Geo)',
+                'Dạng ô vuông 2x2 (A-B-C-D)',
+                'Dạng chữ thập (Lên - Xuống - Trái - Phải)',
+                'Arcade 4 nút thẳng hàng',
+                'Vòng cung cổ điển'
+              ])
                 RadioListTile<String>(
                   title: Text(lo, style: const TextStyle(color: Colors.white, fontSize: 12)),
                   value: lo,
@@ -417,6 +429,8 @@ class _ArcadeSettingsDialogState extends State<ArcadeSettingsDialog> {
                 String layoutCode = 'arcade6';
                 if (_buttonLayout == 'Arcade 4 nút thẳng hàng') layoutCode = 'arcade4Row';
                 if (_buttonLayout == 'Vòng cung cổ điển') layoutCode = 'arcade4Arc';
+                if (_buttonLayout == 'Dạng ô vuông 2x2 (A-B-C-D)') layoutCode = 'arcadeSquare2x2';
+                if (_buttonLayout == 'Dạng chữ thập (Lên - Xuống - Trái - Phải)') layoutCode = 'arcadeDiamond';
 
                 widget.onLayoutChanged?.call(scale, layoutCode);
               },
@@ -452,7 +466,11 @@ class _ArcadeSettingsDialogState extends State<ArcadeSettingsDialog> {
             children: [
               const Text('Kiểu điều khiển di chuyển:', style: TextStyle(color: Color(0xFFD4AF37), fontSize: 13, fontWeight: FontWeight.bold)),
               const SizedBox(height: 6),
-              for (var jt in ['Cần gạt xoay tròn 360°', 'Cụm phím chữ thập D-Pad 4 hướng'])
+              for (var jt in [
+                'Cần gạt xoay tròn 360°',
+                'Phím ô vuông 4 hướng riêng biệt (Lên - Xuống - Trái - Phải)',
+                'Cụm phím chữ thập D-Pad 4 hướng'
+              ])
                 RadioListTile<String>(
                   title: Text(jt, style: const TextStyle(color: Colors.white, fontSize: 12)),
                   value: jt,
@@ -490,7 +508,12 @@ class _ArcadeSettingsDialogState extends State<ArcadeSettingsDialog> {
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD4AF37), foregroundColor: Colors.black),
               onPressed: () {
                 Navigator.pop(ctx);
-                String typeCode = _joystickType == 'Cụm phím chữ thập D-Pad 4 hướng' ? 'dpad4' : 'analog360';
+                String typeCode = 'analog360';
+                if (_joystickType == 'Phím ô vuông 4 hướng riêng biệt (Lên - Xuống - Trái - Phải)') {
+                  typeCode = 'dpadSquare4';
+                } else if (_joystickType == 'Cụm phím chữ thập D-Pad 4 hướng') {
+                  typeCode = 'dpad4';
+                }
                 String sensCode = 'normal';
                 if (_joystickSensitivity == 'Cao (Nhạy nhất)') sensCode = 'high';
                 if (_joystickSensitivity == 'Thấp') sensCode = 'low';

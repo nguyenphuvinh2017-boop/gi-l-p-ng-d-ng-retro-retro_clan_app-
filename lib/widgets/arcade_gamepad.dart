@@ -13,8 +13,8 @@ class ArcadeGamepad extends StatefulWidget {
 
   // Cấu hình Nút & Cần gạt
   final double buttonScale;
-  final String buttonLayout; // 'arcade6', 'arcade4Row', 'arcade4Arc'
-  final String joystickType; // 'analog360', 'dpad4'
+  final String buttonLayout; // 'arcade6', 'arcadeSquare2x2', 'arcadeDiamond', 'arcade4Row', 'arcade4Arc'
+  final String joystickType; // 'analog360', 'dpadSquare4', 'dpad4'
   final String joystickSensitivity; // 'high', 'normal', 'low'
 
   // Chế độ chỉnh vị trí TỪNG NÚT riêng biệt
@@ -242,7 +242,32 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
           final bottomRowY = bottomBaseY - btnSize;
           final topRowY = bottomRowY - gap - btnSize;
 
-          if (widget.buttonLayout == 'arcade4Row') {
+          if (widget.buttonLayout == 'arcadeSquare2x2') {
+            // Dạng ô vuông 2x2 (A, B ở dưới; C, D ở trên)
+            final sqW = comboW + gap + btnSize * 2 + gap;
+            final sqBaseX = W - margin - sqW;
+            defaultPositions['CD'] = Offset(sqBaseX, topRowY + (btnSize - comboH) / 2);
+            defaultPositions['C'] = Offset(sqBaseX + comboW + gap, topRowY);
+            defaultPositions['D'] = Offset(sqBaseX + comboW + gap + btnSize + gap, topRowY);
+
+            defaultPositions['AB'] = Offset(sqBaseX, bottomRowY + (btnSize - comboH) / 2);
+            defaultPositions['A'] = Offset(sqBaseX + comboW + gap, bottomRowY);
+            defaultPositions['B'] = Offset(sqBaseX + comboW + gap + btnSize + gap, bottomRowY);
+          } else if (widget.buttonLayout == 'arcadeDiamond') {
+            // Dạng chữ thập kim cương (Lên C, Xuống B, Trái A, Phải D)
+            final diaSpan = btnSize * 2.2 + gap;
+            final diaBaseX = W - margin - diaSpan - comboW - gap;
+            final midY = (topRowY + bottomRowY) / 2;
+
+            defaultPositions['CD'] = Offset(diaBaseX, topRowY + (btnSize - comboH) / 2);
+            defaultPositions['AB'] = Offset(diaBaseX, bottomRowY + (btnSize - comboH) / 2);
+
+            final clusterX = diaBaseX + comboW + gap;
+            defaultPositions['C'] = Offset(clusterX + btnSize * 0.6, topRowY - 6.0 * s); // Lên
+            defaultPositions['B'] = Offset(clusterX + btnSize * 0.6, bottomRowY + 6.0 * s); // Xuống
+            defaultPositions['A'] = Offset(clusterX, midY); // Trái
+            defaultPositions['D'] = Offset(clusterX + btnSize * 1.2, midY); // Phải
+          } else if (widget.buttonLayout == 'arcade4Row') {
             // 4 nút thẳng hàng: A+B, C+D ở trên; A, B, C, D ở dưới
             final row4W = btnSize * 4 + gap * 3;
             final right4X = W - margin - row4W;
@@ -295,13 +320,38 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
           final bottomRowY = bottomBaseY - btnSize;
           final topRowY = bottomRowY - gap - btnSize;
 
-          defaultPositions['AB'] = Offset(rightBaseX, bottomRowY + (btnSize - comboH) / 2);
-          defaultPositions['A'] = Offset(rightBaseX + comboW + gap, bottomRowY);
-          defaultPositions['B'] = Offset(rightBaseX + comboW + gap + btnSize + gap, bottomRowY);
+          if (widget.buttonLayout == 'arcadeSquare2x2') {
+            final sqW = comboW + gap + btnSize * 2 + gap;
+            final sqBaseX = W - 16.0 * s - sqW;
+            defaultPositions['CD'] = Offset(sqBaseX, topRowY + (btnSize - comboH) / 2);
+            defaultPositions['C'] = Offset(sqBaseX + comboW + gap, topRowY);
+            defaultPositions['D'] = Offset(sqBaseX + comboW + gap + btnSize + gap, topRowY);
 
-          defaultPositions['CD'] = Offset(rightBaseX, topRowY + (btnSize - comboH) / 2);
-          defaultPositions['C'] = Offset(rightBaseX + comboW + gap, topRowY);
-          defaultPositions['D'] = Offset(rightBaseX + comboW + gap + btnSize + gap, topRowY);
+            defaultPositions['AB'] = Offset(sqBaseX, bottomRowY + (btnSize - comboH) / 2);
+            defaultPositions['A'] = Offset(sqBaseX + comboW + gap, bottomRowY);
+            defaultPositions['B'] = Offset(sqBaseX + comboW + gap + btnSize + gap, bottomRowY);
+          } else if (widget.buttonLayout == 'arcadeDiamond') {
+            final diaSpan = btnSize * 2.2 + gap;
+            final diaBaseX = W - 16.0 * s - diaSpan - comboW - gap;
+            final midY = (topRowY + bottomRowY) / 2;
+
+            defaultPositions['CD'] = Offset(diaBaseX, topRowY + (btnSize - comboH) / 2);
+            defaultPositions['AB'] = Offset(diaBaseX, bottomRowY + (btnSize - comboH) / 2);
+
+            final clusterX = diaBaseX + comboW + gap;
+            defaultPositions['C'] = Offset(clusterX + btnSize * 0.6, topRowY - 6.0 * s);
+            defaultPositions['B'] = Offset(clusterX + btnSize * 0.6, bottomRowY + 6.0 * s);
+            defaultPositions['A'] = Offset(clusterX, midY);
+            defaultPositions['D'] = Offset(clusterX + btnSize * 1.2, midY);
+          } else {
+            defaultPositions['AB'] = Offset(rightBaseX, bottomRowY + (btnSize - comboH) / 2);
+            defaultPositions['A'] = Offset(rightBaseX + comboW + gap, bottomRowY);
+            defaultPositions['B'] = Offset(rightBaseX + comboW + gap + btnSize + gap, bottomRowY);
+
+            defaultPositions['CD'] = Offset(rightBaseX, topRowY + (btnSize - comboH) / 2);
+            defaultPositions['C'] = Offset(rightBaseX + comboW + gap, topRowY);
+            defaultPositions['D'] = Offset(rightBaseX + comboW + gap + btnSize + gap, topRowY);
+          }
         }
 
         return Stack(
@@ -315,7 +365,9 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
               W: W,
               H: H,
               isCircle: true,
-              child: widget.joystickType == 'dpad4' ? _buildDPad() : _buildArcadeJoystick(),
+              child: widget.joystickType == 'dpadSquare4'
+                  ? _buildSquareDPad()
+                  : (widget.joystickType == 'dpad4' ? _buildDPad() : _buildArcadeJoystick()),
             ),
 
             // 2. NÚT SELECT (Kéo thả độc lập)
@@ -940,6 +992,177 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
               icon,
               color: isDown ? Colors.black : const Color(0xFFF2ECE1),
               size: 28 * widget.buttonScale,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 3. CỤM PHÍM Ô VUÔNG 4 HƯỚNG RIÊNG BIỆT (UP, DOWN, LEFT, RIGHT)
+  Widget _buildSquareDPad() {
+    final outerSize = 132.0 * widget.buttonScale;
+    final btnSize = 40.0 * widget.buttonScale;
+
+    return SizedBox(
+      width: outerSize,
+      height: outerSize,
+      child: LayoutBuilder(
+        builder: (ctx, constraints) {
+          final size = Size(constraints.maxWidth, constraints.maxHeight);
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onPanStart: (details) => _updateDPadFromOffset(details.localPosition, size),
+            onPanUpdate: (details) => _updateDPadFromOffset(details.localPosition, size),
+            onPanEnd: (_) => _releaseDPad(),
+            onPanCancel: () => _releaseDPad(),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Khung viền vuông bo góc tinh tế
+                Container(
+                  width: outerSize,
+                  height: outerSize,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16 * widget.buttonScale),
+                    color: const Color(0xFF131722),
+                    border: Border.all(color: const Color(0xFF2A364F), width: 1.5 * widget.buttonScale),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // NÚT LÊN (UP) - Dạng ô vuông
+                Positioned(
+                  top: 6 * widget.buttonScale,
+                  child: _buildSquareDirectionBtn(
+                    direction: 'UP',
+                    icon: Icons.keyboard_arrow_up_rounded,
+                    size: btnSize,
+                  ),
+                ),
+
+                // NÚT XUỐNG (DOWN) - Dạng ô vuông
+                Positioned(
+                  bottom: 6 * widget.buttonScale,
+                  child: _buildSquareDirectionBtn(
+                    direction: 'DOWN',
+                    icon: Icons.keyboard_arrow_down_rounded,
+                    size: btnSize,
+                  ),
+                ),
+
+                // NÚT TRÁI (LEFT) - Dạng ô vuông
+                Positioned(
+                  left: 6 * widget.buttonScale,
+                  child: _buildSquareDirectionBtn(
+                    direction: 'LEFT',
+                    icon: Icons.keyboard_arrow_left_rounded,
+                    size: btnSize,
+                  ),
+                ),
+
+                // NÚT PHẢI (RIGHT) - Dạng ô vuông
+                Positioned(
+                  right: 6 * widget.buttonScale,
+                  child: _buildSquareDirectionBtn(
+                    direction: 'RIGHT',
+                    icon: Icons.keyboard_arrow_right_rounded,
+                    size: btnSize,
+                  ),
+                ),
+
+                // Điểm tâm vuông trang trí
+                Container(
+                  width: 20 * widget.buttonScale,
+                  height: 20 * widget.buttonScale,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(4 * widget.buttonScale),
+                    color: const Color(0xFF1A2234),
+                    border: Border.all(color: const Color(0xFF3B4E73), width: 1.0),
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 6 * widget.buttonScale,
+                      height: 6 * widget.buttonScale,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFF00E5FF),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSquareDirectionBtn({
+    required String direction,
+    required IconData icon,
+    required double size,
+  }) {
+    final isDown = _activeDPadDirs.contains(direction);
+    return Listener(
+      onPointerDown: (_) {
+        if (widget.isEditMode) return;
+        _triggerHaptic();
+        setState(() => _activeDPadDirs.add(direction));
+        widget.onButtonEvent(direction, true);
+      },
+      onPointerUp: (_) {
+        if (widget.isEditMode) return;
+        setState(() => _activeDPadDirs.remove(direction));
+        widget.onButtonEvent(direction, false);
+      },
+      onPointerCancel: (_) {
+        if (widget.isEditMode) return;
+        setState(() => _activeDPadDirs.remove(direction));
+        widget.onButtonEvent(direction, false);
+      },
+      child: AnimatedScale(
+        scale: isDown ? 0.92 : 1.0,
+        duration: const Duration(milliseconds: 60),
+        curve: Curves.easeOut,
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8 * widget.buttonScale),
+            gradient: LinearGradient(
+              colors: isDown
+                  ? [const Color(0xFF0091EA), const Color(0xFF00B0FF)]
+                  : [const Color(0xFF263248), const Color(0xFF192233)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(
+              color: isDown ? const Color(0xFF80D8FF) : const Color(0xFF455A7E),
+              width: 1.5 * widget.buttonScale,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: isDown
+                    ? const Color(0xFF00B0FF).withValues(alpha: 0.5)
+                    : Colors.black.withValues(alpha: 0.4),
+                blurRadius: isDown ? 8 : 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Icon(
+              icon,
+              size: 26 * widget.buttonScale,
+              color: isDown ? Colors.white : const Color(0xFFB0BEC5),
             ),
           ),
         ),

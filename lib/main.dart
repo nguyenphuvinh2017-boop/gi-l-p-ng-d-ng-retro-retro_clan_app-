@@ -6,6 +6,7 @@ import 'screens/browse_retrostic_screen.dart';
 import 'screens/clan_lobby_screen.dart';
 import 'services/clan_netplay_service.dart';
 import 'services/rom_manager.dart';
+import 'widgets/app_settings_dialog.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -76,28 +77,22 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   void _onBottomDockTapped(int index) {
     if (index == 0) {
-      // MẠNG LAN
-      setState(() {
-        _currentIndex = 2;
-      });
-    } else if (index == 1) {
-      // ONLINE (Kho game Retrostic)
-      setState(() {
-        _currentIndex = 1;
-      });
-    } else if (index == 2) {
-      // THÊM ROM (Mở file picker ngay lập tức)
-      _homeKey.currentState?.pickAndImportGame();
+      // 1. MÀN HÌNH CHÍNH (Về thư viện game)
       setState(() {
         _currentIndex = 0;
       });
-    } else if (index == 3) {
-      // THÊM SAVE (Nhập file .sav từ máy)
-      _homeKey.currentState?.pickSaveState();
-    } else if (index == 4) {
-      // CHAT / PHÒNG CLAN
+    } else if (index == 1) {
+      // 2. THÊM GAME (Mở trình chọn file ROM để nhập vào máy)
+      _homeKey.currentState?.pickAndImportGame();
+    } else if (index == 2) {
+      // 3. MẠNG LAN
       setState(() {
         _currentIndex = 2;
+      });
+    } else if (index == 3) {
+      // 4. ONLINE (Kho game Retrostic)
+      setState(() {
+        _currentIndex = 1;
       });
     }
   }
@@ -181,8 +176,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             icon: const Icon(Icons.settings, color: Colors.white70),
             tooltip: 'Cài đặt',
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Đang tối ưu cài đặt tay cầm và mạng LAN')),
+              showDialog(
+                context: context,
+                builder: (_) => const AppSettingsDialog(),
               );
             },
           ),
@@ -193,7 +189,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         children: screens,
       ),
 
-      // DOCK ĐIỀU HƯỚNG 5 NÚT ARCADE PHONG CÁCH RETROFUN
+      // DOCK ĐIỀU HƯỚNG 4 NÚT PHONG CÁCH RETROFUN
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: const Color(0xFF080C16),
@@ -209,48 +205,38 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                // 1. MẠNG LAN
+                // 1. MÀN HÌNH CHÍNH
                 _buildDockBtn(
                   index: 0,
+                  icon: Icons.sports_esports,
+                  label: 'MÀN HÌNH CHÍNH',
+                  gradientColors: [const Color(0xFFFFB300), const Color(0xFFE65100)],
+                  isActive: _currentIndex == 0,
+                ),
+                // 2. THÊM GAME
+                _buildDockBtn(
+                  index: 1,
+                  icon: Icons.add_box_rounded,
+                  badgeIcon: Icons.add,
+                  label: 'THÊM GAME',
+                  gradientColors: [const Color(0xFF42A5F5), const Color(0xFF1565C0)],
+                  isActive: false,
+                ),
+                // 3. MẠNG LAN
+                _buildDockBtn(
+                  index: 2,
                   icon: Icons.lan,
                   label: 'MẠNG LAN',
                   gradientColors: [const Color(0xFF00E5FF), const Color(0xFF0091EA)],
                   isActive: _currentIndex == 2,
                 ),
-                // 2. ONLINE
+                // 4. ONLINE
                 _buildDockBtn(
-                  index: 1,
+                  index: 3,
                   icon: Icons.public,
                   label: 'ONLINE',
                   gradientColors: [const Color(0xFF29B6F6), const Color(0xFF0277BD)],
                   isActive: _currentIndex == 1,
-                ),
-                // 3. THÊM ROM
-                _buildDockBtn(
-                  index: 2,
-                  icon: Icons.sports_esports,
-                  badgeIcon: Icons.add,
-                  label: 'THÊM ROM',
-                  gradientColors: [const Color(0xFFFFB300), const Color(0xFFE65100)],
-                  isActive: false,
-                ),
-                // 4. THÊM SAVE
-                _buildDockBtn(
-                  index: 3,
-                  icon: Icons.save,
-                  badgeIcon: Icons.add,
-                  label: 'THÊM SAVE',
-                  gradientColors: [const Color(0xFF42A5F5), const Color(0xFF1565C0)],
-                  isActive: false,
-                ),
-                // 5. CHAT
-                _buildDockBtn(
-                  index: 4,
-                  icon: Icons.chat_bubble,
-                  label: 'CHAT',
-                  gradientColors: [const Color(0xFF66BB6A), const Color(0xFF2E7D32)],
-                  isActive: false,
-                  hasNotification: true,
                 ),
               ],
             ),

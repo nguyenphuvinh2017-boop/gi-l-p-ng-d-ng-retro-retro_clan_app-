@@ -534,7 +534,7 @@ class HomeScreenState extends State<HomeScreen> {
                       )
                     : const Icon(Icons.add_circle, size: 22),
                 label: Text(
-                  _isImporting ? 'Đang thêm file...' : '➕ THÊM ROM TỪ MÁY',
+                  _isImporting ? 'Đang thêm file...' : '➕ THÊM GAME TỪ MÁY',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 onPressed: _isImporting ? null : pickAndImportGame,

@@ -151,8 +151,26 @@
     const loadingBox = document.getElementById('loading-box');
     const loadingText = document.getElementById('loading-text');
 
-    // Bắt lỗi toàn cục hiển thị lên màn hình
+    function isIgnorableError(err) {
+      if (!err) return false;
+      const str = String(err.message || err.reason || err).toLowerCase();
+      return str.includes('permission was denied') ||
+             str.includes('notallowederror') ||
+             str.includes('user gesture') ||
+             str.includes('audiocontext') ||
+             str.includes('the request is not allowed') ||
+             str.includes('interrupted by a call to pause') ||
+             str.includes('interrupted') ||
+             str.includes('play() can only be initiated') ||
+             str.includes('script error');
+    }
+
+    // Bắt lỗi toàn cục hiển thị lên màn hình (Loại bỏ triệt để các cảnh báo âm thanh vô hại trên iOS WebKit)
     window.onerror = function(msg, url, line) {
+      if (isIgnorableError(msg)) {
+        console.warn('Ignored non-fatal error:', msg);
+        return true;
+      }
       if (loadingText) {
         loadingText.innerHTML = '<span style="color:#ff6b6b">Lỗi: ' + msg + '</span>';
         loadingBox.style.display = 'flex';
@@ -160,11 +178,51 @@
     };
 
     window.addEventListener('unhandledrejection', function(event) {
+      const reasonMsg = event.reason ? (event.reason.message || String(event.reason)) : '';
+      if (isIgnorableError(reasonMsg)) {
+        console.warn('Ignored non-fatal rejection:', reasonMsg);
+        event.preventDefault();
+        return;
+      }
       if (loadingText) {
-        loadingText.innerHTML = '<span style="color:#ff6b6b">Lỗi: ' + (event.reason ? (event.reason.message || event.reason) : 'Promise rejected') + '</span>';
+        loadingText.innerHTML = '<span style="color:#ff6b6b">Lỗi: ' + (reasonMsg || 'Promise rejected') + '</span>';
         loadingBox.style.display = 'flex';
       }
     });
+
+    // Mở khóa âm thanh Web Audio / WebKit trên iOS ngay khi có chạm màn hình hoặc bấm nút
+    function unlockAudio() {
+      try {
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(function() {});
+        }
+        if (window.EJS_emulator) {
+          if (window.EJS_emulator.audioContext && window.EJS_emulator.audioContext.state === 'suspended') {
+            window.EJS_emulator.audioContext.resume().catch(function() {});
+          }
+          if (window.EJS_emulator.paused && typeof window.EJS_emulator.play === 'function') {
+            const p = window.EJS_emulator.play();
+            if (p && typeof p.catch === 'function') p.catch(function() {});
+          }
+        }
+      } catch (e) {}
+    }
+
+    window.addEventListener('touchstart', unlockAudio, { passive: true, capture: true });
+    window.addEventListener('touchend', unlockAudio, { passive: true, capture: true });
+    window.addEventListener('pointerdown', unlockAudio, { passive: true, capture: true });
+    window.addEventListener('click', unlockAudio, { passive: true, capture: true });
+
+    if (loadingBox) {
+      loadingBox.addEventListener('click', function() {
+        unlockAudio();
+        loadingBox.style.display = 'none';
+      });
+      loadingBox.addEventListener('touchstart', function() {
+        unlockAudio();
+        loadingBox.style.display = 'none';
+      }, { passive: true });
+    }
 
     const SCREEN_WIDTH = 256;
     const SCREEN_HEIGHT = 240;
@@ -322,6 +380,9 @@
     }
 
     window.playerInput = function(player, btnName, isPressed) {
+      if (isPressed) {
+        unlockAudio();
+      }
       if (!isEmulatorJsMode) {
         // NES Mode
         const code = getButtonCode(btnName);
@@ -426,7 +487,12 @@
               window.EJS_emulator.menu.close();
             }
             if (window.EJS_emulator.paused && typeof window.EJS_emulator.play === 'function') {
-              window.EJS_emulator.play();
+              const playPromise = window.EJS_emulator.play();
+              if (playPromise && typeof playPromise.catch === 'function') {
+                playPromise.catch(function(e) {
+                  console.warn('Autoplay suppressed by browser, will resume on touch:', e);
+                });
+              }
             }
           } catch(e) {}
         }

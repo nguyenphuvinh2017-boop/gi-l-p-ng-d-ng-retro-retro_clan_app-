@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 import 'package:webview_windows/webview_windows.dart';
 import '../models/game_item.dart';
 import '../services/clan_netplay_service.dart';
@@ -285,7 +286,17 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
         debugPrint('Lỗi khởi tạo Windows Webview: $e');
       }
     } else {
-      _mobileController = WebViewController()
+      late final PlatformWebViewControllerCreationParams params;
+      if (WebViewPlatform.instance is WebKitWebViewPlatform) {
+        params = WebKitWebViewControllerCreationParams(
+          allowsInlineMediaPlayback: true,
+          mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
+        );
+      } else {
+        params = const PlatformWebViewControllerCreationParams();
+      }
+
+      _mobileController = WebViewController.fromPlatformCreationParams(params)
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..setBackgroundColor(Colors.black)
         ..setNavigationDelegate(

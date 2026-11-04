@@ -60,6 +60,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
   final ClanNetplayService _clanService = ClanNetplayService();
   final GlobalKey<HomeScreenState> _homeKey = GlobalKey<HomeScreenState>();
+  final GlobalKey<ClanLobbyScreenState> _clanLobbyKey = GlobalKey<ClanLobbyScreenState>();
 
   @override
   void initState() {
@@ -89,6 +90,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       setState(() {
         _currentIndex = 2;
       });
+      _clanLobbyKey.currentState?.refreshGames();
     } else if (index == 3) {
       // 4. ONLINE (Kho game Retrostic)
       setState(() {
@@ -104,15 +106,19 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         key: _homeKey,
         clanService: _clanService,
         onOpenStore: () => setState(() => _currentIndex = 1),
-        onOpenLan: () => setState(() => _currentIndex = 2),
+        onOpenLan: () {
+          setState(() => _currentIndex = 2);
+          _clanLobbyKey.currentState?.refreshGames();
+        },
       ),
       BrowseRetrosticScreen(
         clanService: _clanService,
         onGameDownloaded: () {
           _homeKey.currentState?.refreshLibrary();
+          _clanLobbyKey.currentState?.refreshGames();
         },
       ),
-      ClanLobbyScreen(clanService: _clanService),
+      ClanLobbyScreen(key: _clanLobbyKey, clanService: _clanService),
     ];
 
     return Scaffold(

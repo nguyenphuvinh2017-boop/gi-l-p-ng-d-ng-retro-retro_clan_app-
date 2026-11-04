@@ -13,10 +13,10 @@ class ClanLobbyScreen extends StatefulWidget {
   const ClanLobbyScreen({super.key, required this.clanService});
 
   @override
-  State<ClanLobbyScreen> createState() => _ClanLobbyScreenState();
+  State<ClanLobbyScreen> createState() => ClanLobbyScreenState();
 }
 
-class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProviderStateMixin {
+class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   List<GameItem> _installedGames = [];
   GameItem? _selectedGame;
@@ -39,15 +39,7 @@ class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProv
   void _initData() async {
     _localIp = await widget.clanService.getLocalIp();
     await RomManager.ensureDefaultGames();
-    final games = await RomManager.getInstalledGames();
-    if (mounted) {
-      setState(() {
-        _installedGames = games;
-        if (games.isNotEmpty) {
-          _selectedGame = games.first;
-        }
-      });
-    }
+    await refreshGames();
 
     if (_localIp.contains('.')) {
       final parts = _localIp.split('.');
@@ -73,6 +65,20 @@ class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProv
     };
 
     widget.clanService.startDiscovery();
+  }
+
+  Future<void> refreshGames() async {
+    final games = await RomManager.getInstalledGames();
+    if (mounted) {
+      setState(() {
+        _installedGames = games;
+        if (_selectedGame == null || !games.any((g) => g.title == _selectedGame!.title)) {
+          if (games.isNotEmpty) {
+            _selectedGame = games.first;
+          }
+        }
+      });
+    }
   }
 
   @override
@@ -245,7 +251,28 @@ class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProv
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('1. Chọn game muốn mở phòng', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('1. Chọn game muốn mở phòng', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Color(0xFF00E5FF), size: 20),
+                tooltip: 'Làm mới danh sách game',
+                onPressed: () async {
+                  await refreshGames();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Đã làm mới danh sách game!'),
+                        duration: Duration(seconds: 1),
+                      ),
+                    );
+                  }
+                },
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
 
           if (_installedGames.isEmpty)
@@ -262,7 +289,10 @@ class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProv
             )
           else
             DropdownButtonFormField<GameItem>(
-              initialValue: _selectedGame,
+              key: ValueKey(_selectedGame?.title ?? 'empty'),
+              initialValue: _installedGames.any((g) => g.title == _selectedGame?.title)
+                  ? _installedGames.firstWhere((g) => g.title == _selectedGame?.title)
+                  : (_installedGames.isNotEmpty ? _installedGames.first : null),
               dropdownColor: const Color(0xFF22222C),
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
@@ -273,13 +303,46 @@ class _ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProv
               items: _installedGames.map((g) {
                 return DropdownMenuItem(
                   value: g,
-                  child: Text(g.title, overflow: TextOverflow.ellipsis),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.4)),
+                        ),
+                        child: Text(
+                          g.console.toUpperCase(),
+                          style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      Flexible(
+                        child: Text(g.title, overflow: TextOverflow.ellipsis),
+                      ),
+                    ],
+                  ),
                 );
               }).toList(),
-              onChanged: _isHosting ? null : (val) {
-                setState(() {
-                  _selectedGame = val;
-                });
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() {
+                    _selectedGame = val;
+                  });
+                  if (_isHosting) {
+                    widget.clanService.updateHostedGame(val.title);
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        backgroundColor: const Color(0xFF131C31),
+                        duration: const Duration(seconds: 2),
+                        content: Text('Đã cập nhật game mở phòng: ${val.title}'),
+                      ),
+                    );
+                  }
+                }
               },
             ),
 

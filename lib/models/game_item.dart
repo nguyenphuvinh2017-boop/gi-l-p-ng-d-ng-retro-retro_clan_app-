@@ -80,4 +80,16 @@ class GameItem {
     hasSaveState: json['hasSaveState'] ?? false,
     lastPlayed: json['lastPlayed'] != null ? DateTime.tryParse(json['lastPlayed']) : null,
   );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GameItem &&
+          runtimeType == other.runtimeType &&
+          title == other.title &&
+          console == other.console &&
+          localRomPath == other.localRomPath;
+
+  @override
+  int get hashCode => Object.hash(title, console, localRomPath);
 }

@@ -23,6 +23,30 @@ class ClanNetplayService {
   final Map<String, ClanRoomInfo> _discoveredRooms = {};
   Timer? _cleanupTimer;
 
+  String _currentRoomName = '';
+  String _currentGameTitle = '';
+
+  String get currentGameTitle => _currentGameTitle;
+  String get currentRoomName => _currentRoomName;
+
+  void updateHostedGame(String gameTitle, {String? roomName}) {
+    _currentGameTitle = gameTitle;
+    _currentRoomName = roomName ?? 'Phòng $gameTitle';
+    if (_p2Socket != null && _p2Socket?.readyState == WebSocket.open) {
+      try {
+        final updateMsg = LanMessage(
+          type: LanMessageType.joined,
+          payload: {
+            'player': 2,
+            'gameTitle': _currentGameTitle,
+            'status': 'game_switched',
+          },
+        ).serialize();
+        _p2Socket?.add(updateMsg);
+      } catch (_) {}
+    }
+  }
+
   bool get isHosting => _wsServer != null;
   bool get isP2Connected => _p2Socket != null && _p2Socket?.readyState == WebSocket.open;
   bool get isClientConnected => _clientSocket != null && _clientSocket?.readyState == WebSocket.open;
@@ -88,6 +112,8 @@ class ClanNetplayService {
 
     try {
       final localIp = await getLocalIp();
+      _currentRoomName = roomName;
+      _currentGameTitle = gameTitle;
 
       // 1. Start WebSocket server for controller sync
       _wsServer = await HttpServer.bind(InternetAddress.anyIPv4, port);
@@ -96,14 +122,14 @@ class ClanNetplayService {
       _wsServer!.listen((HttpRequest request) async {
         if (WebSocketTransformer.isUpgradeRequest(request)) {
           final socket = await WebSocketTransformer.upgrade(request);
-          _handleP2Connection(socket, gameTitle);
+          _handleP2Connection(socket, _currentGameTitle);
         } else if (request.uri.path == '/status' || request.uri.path == '/info') {
           request.response.headers.contentType = ContentType.json;
           request.response.headers.add('Access-Control-Allow-Origin', '*');
           request.response.write(jsonEncode({
             'status': 'ok',
-            'roomName': roomName,
-            'gameTitle': gameTitle,
+            'roomName': _currentRoomName,
+            'gameTitle': _currentGameTitle,
             'hostIp': localIp,
             'port': port,
             'p2Connected': isP2Connected,
@@ -126,8 +152,8 @@ class ClanNetplayService {
           final beaconMsg = LanMessage(
             type: LanMessageType.beacon,
             payload: {
-              'roomName': roomName,
-              'gameTitle': gameTitle,
+              'roomName': _currentRoomName,
+              'gameTitle': _currentGameTitle,
               'hostIp': localIp,
               'port': port,
             },

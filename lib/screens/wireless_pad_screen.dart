@@ -29,6 +29,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   String _joystickType = 'dpadSquare4'; // 'dpadSquare4' (ô vuông) hoặc 'analog360'
   String _joystickSensitivity = 'normal';
   bool _isEditMode = false;
+  Uint8List? _latestScreenFrame;
 
   Map<String, Offset>? _customButtonsLand;
   Map<String, Offset>? _customButtonsPort;
@@ -37,6 +38,14 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   void initState() {
     super.initState();
     _loadGamepadSettings();
+
+    widget.clanService.onScreenFrameReceived = (bytes) {
+      if (mounted) {
+        setState(() {
+          _latestScreenFrame = bytes;
+        });
+      }
+    };
 
     widget.clanService.onClientDisconnected = () {
       if (mounted) {
@@ -61,6 +70,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
 
   @override
   void dispose() {
+    widget.clanService.onScreenFrameReceived = null;
     widget.clanService.onClientDisconnected = null;
     super.dispose();
   }
@@ -312,6 +322,44 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
           ),
         ),
 
+        // Màn hình game phát trực tiếp từ máy chủ
+        Container(
+          height: 215,
+          margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFD4AF37), width: 1.5),
+            boxShadow: const [
+              BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: _latestScreenFrame != null
+              ? Image.memory(
+                  _latestScreenFrame!,
+                  gaplessPlayback: true,
+                  fit: BoxFit.contain,
+                )
+              : const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(color: Color(0xFF00E5FF), strokeWidth: 2),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Đang đồng bộ màn hình game từ máy chủ...',
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+        ),
+
         // Thanh trượt căn chỉnh kích thước nút khi bật chỉnh vị trí
         if (_isEditMode) _buildEditModeBar(),
 
@@ -343,6 +391,48 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   Widget _buildLandscapeLayout() {
     return Stack(
       children: [
+        // 0. Màn hình game trực tiếp từ máy chủ ở chính giữa (chuẩn tỷ lệ 4:3)
+        Center(
+          child: AspectRatio(
+            aspectRatio: 4 / 3,
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFD4AF37), width: 1.5),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black87, blurRadius: 10),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: _latestScreenFrame != null
+                  ? Image.memory(
+                      _latestScreenFrame!,
+                      gaplessPlayback: true,
+                      fit: BoxFit.contain,
+                    )
+                  : const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(color: Color(0xFF00E5FF), strokeWidth: 2),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Đang đồng bộ màn hình game từ máy chủ...',
+                            style: TextStyle(color: Colors.white70, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+          ),
+        ),
+
         // 1. Tay cầm Arcade trải dài toàn bộ khung hình ngang
         Positioned.fill(
           child: ArcadeGamepad(

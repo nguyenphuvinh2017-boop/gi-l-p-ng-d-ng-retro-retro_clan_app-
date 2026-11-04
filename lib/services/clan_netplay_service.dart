@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import '../models/lan_message.dart';
 
 class ClanNetplayService {
@@ -21,6 +22,10 @@ class ClanNetplayService {
   Function(bool connected)? onP2ConnectionChanged;
   Function(List<ClanRoomInfo> rooms)? onRoomsDiscovered;
   void Function()? onClientDisconnected;
+  Function(Uint8List frame)? onScreenFrameReceived;
+
+  WebSocket? _screenFeedSocket;
+  Timer? _subnetScanTimer;
 
   final Map<String, ClanRoomInfo> _discoveredRooms = {};
   Timer? _cleanupTimer;
@@ -123,8 +128,13 @@ class ClanNetplayService {
 
       _wsServer!.listen((HttpRequest request) async {
         if (WebSocketTransformer.isUpgradeRequest(request)) {
+          final isScreen = request.uri.path.contains('screen_feed');
           final socket = await WebSocketTransformer.upgrade(request);
-          _handleP2Connection(socket, _currentGameTitle);
+          if (isScreen) {
+            _handleScreenFeedSource(socket);
+          } else {
+            _handleP2Connection(socket, _currentGameTitle);
+          }
         } else if (request.uri.path == '/status' || request.uri.path == '/info') {
           request.response.headers.contentType = ContentType.json;
           request.response.headers.add('Access-Control-Allow-Origin', '*');
@@ -149,7 +159,13 @@ class ClanNetplayService {
       _udpSocket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
       _udpSocket!.broadcastEnabled = true;
 
-      _beaconTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
+      final parts = localIp.split('.');
+      String subnetBroadcast = '255.255.255.255';
+      if (parts.length == 4) {
+        subnetBroadcast = '${parts[0]}.${parts[1]}.${parts[2]}.255';
+      }
+
+      _beaconTimer = Timer.periodic(const Duration(milliseconds: 1200), (_) {
         try {
           final beaconMsg = LanMessage(
             type: LanMessageType.beacon,
@@ -162,11 +178,15 @@ class ClanNetplayService {
           ).serialize();
 
           final bytes = utf8.encode(beaconMsg);
-          _udpSocket?.send(
-            bytes,
-            InternetAddress('255.255.255.255'),
-            defaultUdpPort,
-          );
+          _udpSocket?.send(bytes, InternetAddress('255.255.255.255'), defaultUdpPort);
+          if (subnetBroadcast != '255.255.255.255') {
+            try {
+              _udpSocket?.send(bytes, InternetAddress(subnetBroadcast), defaultUdpPort);
+            } catch (_) {}
+          }
+          try {
+            _udpSocket?.send(bytes, InternetAddress('127.0.0.1'), defaultUdpPort);
+          } catch (_) {}
         } catch (_) {}
       });
 
@@ -176,6 +196,24 @@ class ClanNetplayService {
       await stopAll();
       return false;
     }
+  }
+
+  void _handleScreenFeedSource(WebSocket socket) {
+    try {
+      _screenFeedSocket?.close();
+    } catch (_) {}
+    _screenFeedSocket = socket;
+    _screenFeedSocket?.listen(
+      (data) {
+        if (_p2Socket != null && _p2Socket?.readyState == WebSocket.open) {
+          try {
+            _p2Socket?.add(data);
+          } catch (_) {}
+        }
+      },
+      onDone: () => _screenFeedSocket = null,
+      onError: (_) => _screenFeedSocket = null,
+    );
   }
 
   void _handleP2Connection(WebSocket socket, String gameTitle) {
@@ -280,39 +318,41 @@ class ClanNetplayService {
       print('Discovery error: $e');
     }
 
-    // 2. Quét song song bằng HTTP subnet probe (Đảm bảo 100% tìm thấy trên iOS và Router chặn UDP)
+    // 2. Quét song song định kỳ bằng HTTP subnet probe (Tìm thấy phòng 100% không lo router chặn UDP)
+    _subnetScanTimer?.cancel();
     scanSubnet();
+    _subnetScanTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      scanSubnet();
+    });
   }
 
-  /// Quét nhanh dải mạng nội bộ qua HTTP (dành cho iOS và bộ định tuyến chặn UDP Broadcast)
+  /// Quét nhanh dải mạng nội bộ qua HTTP
   Future<void> scanSubnet() async {
     try {
       final localIp = await getLocalIp();
-      if (!localIp.contains('.')) return;
-      final parts = localIp.split('.');
-      if (parts.length != 4) return;
-      final prefix = '${parts[0]}.${parts[1]}.${parts[2]}';
-      final currentHostNum = int.tryParse(parts[3]) ?? 0;
+      final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 500);
 
-      final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 600);
-
-      // Quét các IP lân cận trước
-      final List<int> ipSuffixes = [];
-      for (int delta = 1; delta <= 30; delta++) {
-        if (currentHostNum - delta >= 1) ipSuffixes.add(currentHostNum - delta);
-        if (currentHostNum + delta <= 254) ipSuffixes.add(currentHostNum + delta);
-      }
-      for (int i = 1; i <= 254; i++) {
-        if (!ipSuffixes.contains(i) && i != currentHostNum) {
-          ipSuffixes.add(i);
+      final List<String> targetIps = ['127.0.0.1', localIp];
+      if (localIp.contains('.')) {
+        final parts = localIp.split('.');
+        if (parts.length == 4) {
+          final prefix = '${parts[0]}.${parts[1]}.${parts[2]}';
+          final hostNum = int.tryParse(parts[3]) ?? 0;
+          for (int delta = 1; delta <= 30; delta++) {
+            if (hostNum - delta >= 1) targetIps.add('$prefix.${hostNum - delta}');
+            if (hostNum + delta <= 254) targetIps.add('$prefix.${hostNum + delta}');
+          }
+          for (int i = 1; i <= 254; i++) {
+            final ip = '$prefix.$i';
+            if (!targetIps.contains(ip)) targetIps.add(ip);
+          }
         }
       }
 
-      const batchSize = 30;
-      for (int i = 0; i < ipSuffixes.length; i += batchSize) {
-        final batch = ipSuffixes.skip(i).take(batchSize);
-        await Future.wait(batch.map((suffix) async {
-          final targetIp = '$prefix.$suffix';
+      const batchSize = 35;
+      for (int i = 0; i < targetIps.length; i += batchSize) {
+        final batch = targetIps.skip(i).take(batchSize);
+        await Future.wait(batch.map((targetIp) async {
           try {
             final uri = Uri.parse('http://$targetIp:$defaultWsPort/status');
             final req = await client.getUrl(uri);
@@ -369,10 +409,15 @@ class ClanNetplayService {
 
       _clientSocket?.listen(
         (data) {
-          final msg = LanMessage.deserialize(data.toString());
-          if (msg != null && msg.type == LanMessageType.joined) {
-            final title = msg.payload['gameTitle'] as String? ?? 'Game';
-            onJoined(title);
+          if (data is List<int>) {
+            // Live game screen frame from Host
+            onScreenFrameReceived?.call(Uint8List.fromList(data));
+          } else {
+            final msg = LanMessage.deserialize(data.toString());
+            if (msg != null && msg.type == LanMessageType.joined) {
+              final title = msg.payload['gameTitle'] as String? ?? 'Game';
+              onJoined(title);
+            }
           }
         },
         onDone: () {
@@ -414,6 +459,13 @@ class ClanNetplayService {
     _beaconTimer = null;
     _cleanupTimer?.cancel();
     _cleanupTimer = null;
+    _subnetScanTimer?.cancel();
+    _subnetScanTimer = null;
+
+    try {
+      await _screenFeedSocket?.close();
+    } catch (_) {}
+    _screenFeedSocket = null;
 
     try {
       await _p2Socket?.close();

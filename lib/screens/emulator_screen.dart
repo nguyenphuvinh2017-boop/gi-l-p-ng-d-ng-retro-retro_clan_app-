@@ -922,9 +922,9 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
             onPressed: _openCheatDialog,
           ),
           IconButton(
-            icon: const Icon(Icons.fast_rewind, color: Color(0xFF00E5FF)),
-            tooltip: 'Tua ngược 10 giây (Rewind)',
-            onPressed: _triggerRewind,
+            icon: const Icon(Icons.screen_rotation, color: Colors.white70),
+            tooltip: 'Xoay màn hình (Ngang)',
+            onPressed: _toggleRotation,
           ),
           IconButton(
             icon: Icon(
@@ -941,6 +941,9 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             onSelected: (value) {
               switch (value) {
+                case 'rewind':
+                  _triggerRewind();
+                  break;
                 case 'crt':
                   _toggleCrtFilter();
                   break;
@@ -959,6 +962,16 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
               }
             },
             itemBuilder: (ctx) => [
+              PopupMenuItem(
+                value: 'rewind',
+                child: const Row(
+                  children: [
+                    Icon(Icons.fast_rewind, color: Color(0xFF00E5FF), size: 20),
+                    SizedBox(width: 10),
+                    Text('Tua ngược 10 giây (Rewind)', style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
               PopupMenuItem(
                 value: 'crt',
                 child: Row(

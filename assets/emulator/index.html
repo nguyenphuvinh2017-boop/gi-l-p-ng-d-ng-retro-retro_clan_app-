@@ -164,6 +164,18 @@
   </div>
 
   <script>
+    // Bật preserveDrawingBuffer để hỗ trợ chụp khung hình và truyền trực tiếp qua LAN
+    (function() {
+      const origGetContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function(type, attributes) {
+        if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') {
+          attributes = attributes || {};
+          attributes.preserveDrawingBuffer = true;
+        }
+        return origGetContext.call(this, type, attributes);
+      };
+    })();
+
     const canvas = document.getElementById('nes-canvas');
     const ctx = canvas.getContext('2d');
     const statusOverlay = document.getElementById('status-overlay');
@@ -620,8 +632,66 @@
       }
     }, 200);
 
+    let screenFeedWs = null;
+    let screenFeedInterval = null;
+
+    function startLiveScreenFeed() {
+      stopLiveScreenFeed();
+      try {
+        const host = window.location.hostname || '127.0.0.1';
+        screenFeedWs = new WebSocket('ws://' + host + ':8989/screen_feed');
+        screenFeedWs.binaryType = 'arraybuffer';
+      } catch(e) {}
+
+      screenFeedInterval = setInterval(() => {
+        if (!p2Connected) {
+          stopLiveScreenFeed();
+          return;
+        }
+        if (!screenFeedWs || screenFeedWs.readyState !== WebSocket.OPEN) {
+          if (!screenFeedWs || screenFeedWs.readyState === WebSocket.CLOSED) {
+            try {
+              const host = window.location.hostname || '127.0.0.1';
+              screenFeedWs = new WebSocket('ws://' + host + ':8989/screen_feed');
+              screenFeedWs.binaryType = 'arraybuffer';
+            } catch(e) {}
+          }
+          return;
+        }
+
+        try {
+          const cvs = document.querySelector('#game-container canvas') || 
+                      document.getElementById('nes-canvas') || 
+                      document.querySelector('canvas');
+          if (!cvs || cvs.width === 0 || cvs.height === 0) return;
+
+          cvs.toBlob((blob) => {
+            if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
+              screenFeedWs.send(blob);
+            }
+          }, 'image/jpeg', 0.55);
+        } catch(e) {}
+      }, 55);
+    }
+
+    function stopLiveScreenFeed() {
+      if (screenFeedInterval) {
+        clearInterval(screenFeedInterval);
+        screenFeedInterval = null;
+      }
+      if (screenFeedWs) {
+        try { screenFeedWs.close(); } catch(e) {}
+        screenFeedWs = null;
+      }
+    }
+
     window.setP2Status = function(connected) {
       p2Connected = connected;
+      if (connected) {
+        startLiveScreenFeed();
+      } else {
+        stopLiveScreenFeed();
+      }
     };
 
     window.resetGame = function() {

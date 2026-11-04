@@ -370,9 +370,30 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
       };
 
       widget.clanService.onP2ConnectionChanged = (connected) {
-        setState(() {
-          _p2Connected = connected;
-        });
+        if (mounted) {
+          setState(() {
+            _p2Connected = connected;
+          });
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: connected ? const Color(0xFF00C853) : Colors.orangeAccent,
+              duration: const Duration(seconds: 3),
+              content: Row(
+                children: [
+                  Icon(connected ? Icons.sports_esports : Icons.link_off, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Text(
+                    connected
+                        ? '🎮 Người chơi 2 (Clan LAN) đã kết nối thành công!'
+                        : '⚠️ Người chơi 2 đã ngắt kết nối.',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
         _runJs("window.setP2Status($connected);");
       };
     }

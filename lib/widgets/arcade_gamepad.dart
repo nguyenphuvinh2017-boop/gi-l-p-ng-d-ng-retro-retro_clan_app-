@@ -207,8 +207,11 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final W = constraints.maxWidth;
-        final H = constraints.maxHeight;
+        final rawW = constraints.maxWidth;
+        final rawH = constraints.maxHeight;
+        final isInfiniteH = rawH.isInfinite;
+        final W = rawW.isInfinite ? MediaQuery.of(context).size.width : rawW;
+        final H = isInfiniteH ? (widget.isLandscape ? MediaQuery.of(context).size.height : 360.0) : rawH;
         final s = widget.buttonScale;
 
         final joySize = 130.0 * s;
@@ -361,7 +364,7 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
         final modeW = 138.0 * s;
         final modeH = 28.0 * s;
 
-        return Stack(
+        final stack = Stack(
           children: [
             // LƯỚI Ô VUÔNG CĂN CHỈNH KHI BẬT CHẾ ĐỘ CHỈNH NÚT (isEditMode)
             if (widget.isEditMode)
@@ -648,6 +651,7 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
               ),
           ],
         );
+        return isInfiniteH ? SizedBox(width: W, height: H, child: stack) : stack;
       },
     );
   }

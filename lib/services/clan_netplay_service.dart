@@ -20,6 +20,7 @@ class ClanNetplayService {
   Function(String btn, bool isDown)? onPlayer2InputReceived;
   Function(bool connected)? onP2ConnectionChanged;
   Function(List<ClanRoomInfo> rooms)? onRoomsDiscovered;
+  void Function()? onClientDisconnected;
 
   final Map<String, ClanRoomInfo> _discoveredRooms = {};
   Timer? _cleanupTimer;

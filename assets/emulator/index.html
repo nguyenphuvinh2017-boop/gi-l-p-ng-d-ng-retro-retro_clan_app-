@@ -366,9 +366,11 @@
         'C': [{ key: 'c', code: 'KeyC', keyCode: 67 }],
         'D': [{ key: 'v', code: 'KeyV', keyCode: 86 }],
         'SELECT': [
+          { key: '5', code: 'Digit5', keyCode: 53 },
           { key: 'Shift', code: 'ShiftRight', keyCode: 16 }
         ],
         'START': [
+          { key: '1', code: 'Digit1', keyCode: 49 },
           { key: 'Enter', code: 'Enter', keyCode: 13 }
         ]
       },
@@ -382,9 +384,11 @@
         'C': [{ key: 'u', code: 'KeyU', keyCode: 85 }],
         'D': [{ key: 'i', code: 'KeyI', keyCode: 73 }],
         'SELECT': [
+          { key: '6', code: 'Digit6', keyCode: 54 },
           { key: 'o', code: 'KeyO', keyCode: 79 }
         ],
         'START': [
+          { key: '2', code: 'Digit2', keyCode: 50 },
           { key: 'p', code: 'KeyP', keyCode: 80 }
         ]
       }
@@ -426,25 +430,21 @@
         }
       } else {
         // Arcade / Neo Geo / SNES Mode
-        // 1. Gửi trực tiếp vào simulateInput của GameManager (Bỏ qua hoàn toàn hotkey bàn phím)
-        let handledBySimulate = false;
+        // 1. Gửi trực tiếp vào simulateInput của GameManager
         const pIndex = player - 1;
         const btnId = EJS_BUTTON_IDS[btnName.toUpperCase()];
         if (btnId !== undefined && window.EJS_emulator && window.EJS_emulator.gameManager && typeof window.EJS_emulator.gameManager.simulateInput === 'function') {
           try {
             window.EJS_emulator.gameManager.simulateInput(pIndex, btnId, isPressed ? 1 : 0);
-            handledBySimulate = true;
           } catch(e) {}
         }
 
-        // 2. Dự phòng qua bàn phím nếu simulateInput chưa sẵn sàng hoặc cho SELECT / START
-        if (!handledBySimulate || btnName === 'SELECT' || btnName === 'START') {
-          const pMap = ARCADE_KEY_MAP[player] || ARCADE_KEY_MAP[1];
-          const keys = pMap[btnName.toUpperCase()];
-          if (keys && keys.length > 0) {
-            for (let i = 0; i < keys.length; i++) {
-              dispatchKey(keys[i], isPressed);
-            }
+        // 2. Dispatch bàn phím song song để 100% core và hệ máy arcade đều nhận
+        const pMap = ARCADE_KEY_MAP[player] || ARCADE_KEY_MAP[1];
+        const keys = pMap[btnName.toUpperCase()];
+        if (keys && keys.length > 0) {
+          for (let i = 0; i < keys.length; i++) {
+            dispatchKey(keys[i], isPressed);
           }
         }
       }

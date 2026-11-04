@@ -424,7 +424,7 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> with SingleTicker
             children: [
               _buildInfoRow('Địa chỉ IP thiết bị:', _localIp),
               const Divider(color: Colors.white12, height: 16),
-              _buildInfoRow('Cổng lắng nghe (Port):', '8888'),
+              _buildInfoRow('Cổng lắng nghe (Port):', '8989'),
               const Divider(color: Colors.white12, height: 16),
               _buildInfoRow('Chơi chung Android & iOS:', 'Hỗ trợ 100% cùng mạng WiFi'),
             ],

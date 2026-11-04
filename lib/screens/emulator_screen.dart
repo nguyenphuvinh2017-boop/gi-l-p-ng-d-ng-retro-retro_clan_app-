@@ -323,10 +323,10 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
           setState(() {
             _isEngineReady = true;
           });
-          if (widget.isHost && widget.clanService.isP2Connected) {
-            for (var delay in [1000, 2500, 4500]) {
+          if (widget.isHost) {
+            for (var delay in [1000, 2500, 4500, 7000]) {
               Future.delayed(Duration(milliseconds: delay), () {
-                _runJs("window.setP2Status(true);");
+                _runJs("if (window.setP2Status) window.setP2Status(true);");
               });
             }
           }
@@ -359,10 +359,12 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
                 setState(() {
                   _isEngineReady = true;
                 });
-                if (widget.isHost && widget.clanService.isP2Connected) {
-                  Future.delayed(const Duration(milliseconds: 1000), () {
-                    _runJs("window.setP2Status(true);");
-                  });
+                if (widget.isHost) {
+                  for (var delay in [1000, 2500, 4500, 7000]) {
+                    Future.delayed(Duration(milliseconds: delay), () {
+                      _runJs("if (window.setP2Status) window.setP2Status(true);");
+                    });
+                  }
                 }
               }
             },

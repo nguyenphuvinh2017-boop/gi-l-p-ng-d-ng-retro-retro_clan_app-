@@ -462,17 +462,18 @@ class ClanNetplayService {
     _screenFeedSocket = socket;
     _screenFeedSocket?.listen(
       (data) {
-        if (_screenClientSockets.isNotEmpty) {
-          for (var client in List<WebSocket>.from(_screenClientSockets)) {
-            try {
-              if (client.readyState == WebSocket.open) {
-                client.add(data);
-              }
-            } catch (_) {}
-          }
-        } else if (_p2Socket != null && _p2Socket?.readyState == WebSocket.open) {
+        // Luôn truyền thẳng khung hình tới Player 2 qua WebSocket chính
+        if (_p2Socket != null && _p2Socket?.readyState == WebSocket.open) {
           try {
             _p2Socket?.add(data);
+          } catch (_) {}
+        }
+        // Đồng thời chuyển tiếp tới các client xem màn hình phụ nếu có
+        for (var client in List<WebSocket>.from(_screenClientSockets)) {
+          try {
+            if (client.readyState == WebSocket.open) {
+              client.add(data);
+            }
           } catch (_) {}
         }
       },

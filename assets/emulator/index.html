@@ -679,45 +679,76 @@
     let screenFeedWs = null;
     let screenFeedInterval = null;
     let isCapturingFrame = false;
+    let lastCaptureTime = 0;
     let offscreenCanvas = null;
     let offscreenCtx = null;
+    let p2Connected = true; // Mặc định bật để sẵn sàng stream ngay khi Host vào game
 
     function getOffscreenCanvas(targetW, targetH) {
       if (!offscreenCanvas) {
         offscreenCanvas = document.createElement('canvas');
-        offscreenCtx = offscreenCanvas.getContext('2d', { alpha: false, desynchronized: true });
+        offscreenCtx = offscreenCanvas.getContext('2d', { alpha: false });
         offscreenCtx.imageSmoothingEnabled = false;
-        offscreenCtx.webkitImageSmoothingEnabled = false;
-        offscreenCtx.mozImageSmoothingEnabled = false;
       }
       if (offscreenCanvas.width !== targetW || offscreenCanvas.height !== targetH) {
         offscreenCanvas.width = targetW;
         offscreenCanvas.height = targetH;
         offscreenCtx.imageSmoothingEnabled = false;
-        offscreenCtx.webkitImageSmoothingEnabled = false;
-        offscreenCtx.mozImageSmoothingEnabled = false;
       }
       return { canvas: offscreenCanvas, ctx: offscreenCtx };
     }
 
     // ================= HIGH-PERFORMANCE ZERO-ACK SCREEN & AUDIO STREAM =================
-    function getScaledRetroCanvas(sourceCanvas) {
-      // 400x300 integer scale: 1.2ms encode time, 8KB payload, crisp pixel rendering
-      const maxW = 400;
-      let w = sourceCanvas.width || 304;
-      let h = sourceCanvas.height || 224;
-      if (w > maxW) {
-        h = Math.round(h * (maxW / w));
-        w = maxW;
+    function captureAndSendFrame() {
+      if (!screenFeedWs || screenFeedWs.readyState !== WebSocket.OPEN) return;
+      if (!p2Connected) return;
+
+      const now = Date.now();
+      // Chống deadlock: nếu lần chụp trước quá 160ms chưa xong thì tự giải phóng cờ
+      if (isCapturingFrame && (now - lastCaptureTime < 160)) {
+        return;
       }
-      const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas(w, h);
-      offCtx.drawImage(sourceCanvas, 0, 0, w, h);
-      return offCvs;
+
+      // Chống tràn bộ đệm mạng Wi-Fi (> 32KB chờ gửi thì bỏ qua 1 khung hình)
+      if (screenFeedWs.bufferedAmount > 32768) {
+        return;
+      }
+
+      const cvs = document.querySelector('#game-container canvas') || 
+                  document.getElementById('nes-canvas') || 
+                  document.querySelector('canvas');
+      if (!cvs || cvs.width === 0 || cvs.height === 0) return;
+
+      isCapturingFrame = true;
+      lastCaptureTime = now;
+
+      try {
+        let targetCanvas = cvs;
+        // Nếu canvas gốc lớn hơn 480px thì mới cần downscale về 400px để nhẹ mạng
+        if (cvs.width > 480) {
+          const maxW = 400;
+          const targetW = maxW;
+          const targetH = Math.round(cvs.height * (maxW / cvs.width));
+          const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas(targetW, targetH);
+          offCtx.drawImage(cvs, 0, 0, targetW, targetH);
+          targetCanvas = offCvs;
+        }
+
+        targetCanvas.toBlob(function(blob) {
+          isCapturingFrame = false;
+          try {
+            if (blob && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
+              screenFeedWs.send(blob);
+            }
+          } catch(e) {}
+        }, 'image/jpeg', 0.80);
+      } catch(err) {
+        isCapturingFrame = false;
+      }
     }
 
     function startLiveScreenFeed() {
       stopLiveScreenFeed();
-      if (!p2Connected) return;
 
       try {
         const host = window.location.hostname || '127.0.0.1';
@@ -725,37 +756,7 @@
         screenFeedWs.binaryType = 'arraybuffer';
 
         screenFeedWs.onopen = function() {
-          // Bơm liên tục 45 FPS không chờ ACK - Loại bỏ 100% hiện tượng thắt cổ chai và giật cục
-          screenFeedInterval = setInterval(function() {
-            if (!p2Connected || !screenFeedWs || screenFeedWs.readyState !== WebSocket.OPEN) return;
-            if (isCapturingFrame) return;
-
-            // Chống tràn bộ đệm mạng Wi-Fi (Buffer Bloat Protection)
-            if (screenFeedWs.bufferedAmount > 24576) {
-              return;
-            }
-
-            const cvs = document.querySelector('#game-container canvas') || 
-                        document.getElementById('nes-canvas') || 
-                        document.querySelector('canvas');
-            if (!cvs || cvs.width === 0 || cvs.height === 0) return;
-
-            isCapturingFrame = true;
-            try {
-              const scaled = getScaledRetroCanvas(cvs);
-              scaled.toBlob(function(blob) {
-                try {
-                  if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
-                    screenFeedWs.send(blob);
-                  }
-                } finally {
-                  isCapturingFrame = false;
-                }
-              }, 'image/jpeg', 0.80);
-            } catch(e) {
-              isCapturingFrame = false;
-            }
-          }, 22); // 45 FPS mượt mà
+          screenFeedInterval = setInterval(captureAndSendFrame, 22); // 45 FPS mượt mà
         };
 
         screenFeedWs.onclose = function() {
@@ -1067,6 +1068,10 @@
 
       window.EJS_onGameStart = function() {
         loadingBox.style.display = 'none';
+        try {
+          startLiveScreenFeed();
+          startLiveAudioFeed();
+        } catch(e) {}
         if (window.EJS_emulator) {
           try {
             if (window.EJS_emulator.controls) {

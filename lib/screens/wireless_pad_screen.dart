@@ -254,17 +254,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   }
 
   Widget _buildScreenContent() {
-    if (Platform.isWindows) {
-      if (_winController != null && _isWinReady && _winController!.value.isInitialized) {
-        return Webview(_winController!);
-      }
-    } else {
-      if (_mobileController != null) {
-        return WebViewWidget(controller: _mobileController!);
-      }
-    }
-
-    // Hiển thị trực tiếp luồng hình ảnh thời gian thực mượt mà từ Host qua WebSocket!
+    // Hiển thị trực tiếp luồng hình ảnh thời gian thực mượt mà từ Host qua native WebSocket (GPU hardware-accelerated)!
     return ValueListenableBuilder<Uint8List?>(
       valueListenable: _currentFrameNotifier,
       builder: (context, frame, _) {
@@ -278,7 +268,21 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
           );
         }
         return const Center(
-          child: CircularProgressIndicator(color: Color(0xFF00E5FF)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(color: Color(0xFF00E5FF), strokeWidth: 3),
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Đang nhận hình ảnh từ máy chủ...',
+                style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -345,7 +349,22 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
               ],
             ),
       body: SafeArea(
-        child: isLandscape ? _buildLandscapeLayout() : _buildPortraitLayout(),
+        child: Stack(
+          children: [
+            isLandscape ? _buildLandscapeLayout() : _buildPortraitLayout(),
+            // Hidden Web Audio worker for P2 sound streaming
+            Offstage(
+              offstage: true,
+              child: SizedBox(
+                width: 1,
+                height: 1,
+                child: Platform.isWindows
+                    ? (_winController != null && _isWinReady ? Webview(_winController!) : const SizedBox())
+                    : (_mobileController != null ? WebViewWidget(controller: _mobileController!) : const SizedBox()),
+              ),
+            ),
+          ],
+        ),
       ),
     ),
     );

@@ -9,6 +9,7 @@ import 'services/clan_netplay_service.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   if (!Platform.isWindows) {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
@@ -56,6 +57,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
   final ClanNetplayService _clanService = ClanNetplayService();
   final GlobalKey<HomeScreenState> _homeKey = GlobalKey<HomeScreenState>();
+
+  @override
+  void initState() {
+    super.initState();
+    if (!Platform.isWindows) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
+  }
 
   @override
   void dispose() {
@@ -184,7 +193,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
       // DOCK ĐIỀU HƯỚNG 5 NÚT ARCADE PHONG CÁCH RETROFUN
       bottomNavigationBar: Container(
-        height: 68,
         decoration: BoxDecoration(
           color: const Color(0xFF080C16),
           border: const Border(top: BorderSide(color: Color(0xFF1B2A4A), width: 1.5)),
@@ -192,53 +200,59 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             BoxShadow(color: Colors.black.withValues(alpha: 0.6), blurRadius: 10, offset: const Offset(0, -2)),
           ],
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            // 1. MẠNG LAN
-            _buildDockBtn(
-              index: 0,
-              icon: Icons.lan,
-              label: 'MẠNG LAN',
-              gradientColors: [const Color(0xFF00E5FF), const Color(0xFF0091EA)],
-              isActive: _currentIndex == 2,
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 62,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                // 1. MẠNG LAN
+                _buildDockBtn(
+                  index: 0,
+                  icon: Icons.lan,
+                  label: 'MẠNG LAN',
+                  gradientColors: [const Color(0xFF00E5FF), const Color(0xFF0091EA)],
+                  isActive: _currentIndex == 2,
+                ),
+                // 2. ONLINE
+                _buildDockBtn(
+                  index: 1,
+                  icon: Icons.public,
+                  label: 'ONLINE',
+                  gradientColors: [const Color(0xFF29B6F6), const Color(0xFF0277BD)],
+                  isActive: _currentIndex == 1,
+                ),
+                // 3. THÊM ROM
+                _buildDockBtn(
+                  index: 2,
+                  icon: Icons.sports_esports,
+                  badgeIcon: Icons.add,
+                  label: 'THÊM ROM',
+                  gradientColors: [const Color(0xFFFFB300), const Color(0xFFE65100)],
+                  isActive: false,
+                ),
+                // 4. THÊM SAVE
+                _buildDockBtn(
+                  index: 3,
+                  icon: Icons.save,
+                  badgeIcon: Icons.add,
+                  label: 'THÊM SAVE',
+                  gradientColors: [const Color(0xFF42A5F5), const Color(0xFF1565C0)],
+                  isActive: false,
+                ),
+                // 5. CHAT
+                _buildDockBtn(
+                  index: 4,
+                  icon: Icons.chat_bubble,
+                  label: 'CHAT',
+                  gradientColors: [const Color(0xFF66BB6A), const Color(0xFF2E7D32)],
+                  isActive: false,
+                  hasNotification: true,
+                ),
+              ],
             ),
-            // 2. ONLINE
-            _buildDockBtn(
-              index: 1,
-              icon: Icons.public,
-              label: 'ONLINE',
-              gradientColors: [const Color(0xFF29B6F6), const Color(0xFF0277BD)],
-              isActive: _currentIndex == 1,
-            ),
-            // 3. THÊM ROM
-            _buildDockBtn(
-              index: 2,
-              icon: Icons.sports_esports,
-              badgeIcon: Icons.add,
-              label: 'THÊM ROM',
-              gradientColors: [const Color(0xFFFFB300), const Color(0xFFE65100)],
-              isActive: false,
-            ),
-            // 4. THÊM SAVE
-            _buildDockBtn(
-              index: 3,
-              icon: Icons.save,
-              badgeIcon: Icons.add,
-              label: 'THÊM SAVE',
-              gradientColors: [const Color(0xFF42A5F5), const Color(0xFF1565C0)],
-              isActive: false,
-            ),
-            // 5. CHAT
-            _buildDockBtn(
-              index: 4,
-              icon: Icons.chat_bubble,
-              label: 'CHAT',
-              gradientColors: [const Color(0xFF66BB6A), const Color(0xFF2E7D32)],
-              isActive: false,
-              hasNotification: true,
-            ),
-          ],
+          ),
         ),
       ),
     );

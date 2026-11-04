@@ -83,7 +83,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
     } catch (_) {}
     if (!Platform.isWindows) {
       try {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
         SystemChrome.setPreferredOrientations([
           DeviceOrientation.portraitUp,
           DeviceOrientation.portraitDown,

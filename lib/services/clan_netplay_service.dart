@@ -82,81 +82,52 @@ class ClanNetplayService {
     const urlParams = new URLSearchParams(window.location.search);
     const host = urlParams.get('host') || window.location.hostname || '127.0.0.1';
 
-    // 1. Nhận luồng Video trực tiếp siêu mượt 60 FPS (Tự động xả bỏ khung hình trễ)
-    let isDecoding = false;
-    let pendingBlob = null;
-
-    function processBlob(blob) {
-      if (isDecoding) {
-        pendingBlob = blob;
-        return;
-      }
-      isDecoding = true;
-      if (window.createImageBitmap) {
-        createImageBitmap(blob).then(bmp => {
-          if (canvas.width !== bmp.width || canvas.height !== bmp.height) {
-            canvas.width = bmp.width;
-            canvas.height = bmp.height;
-            ctx.imageSmoothingEnabled = false;
-            ctx.webkitImageSmoothingEnabled = false;
-            ctx.mozImageSmoothingEnabled = false;
-          }
-          ctx.drawImage(bmp, 0, 0);
-          bmp.close();
-          isDecoding = false;
-          if (pendingBlob) {
-            const next = pendingBlob;
-            pendingBlob = null;
-            processBlob(next);
-          }
-        }).catch(() => {
-          isDecoding = false;
-          if (pendingBlob) {
-            const next = pendingBlob;
-            pendingBlob = null;
-            processBlob(next);
-          }
-        });
-      } else {
-        const img = new Image();
-        img.src = URL.createObjectURL(blob);
-        img.onload = () => {
-          if (canvas.width !== img.width || canvas.height !== img.height) {
-            canvas.width = img.width;
-            canvas.height = img.height;
-            ctx.imageSmoothingEnabled = false;
-          }
-          ctx.drawImage(img, 0, 0);
-          URL.revokeObjectURL(img.src);
-          isDecoding = false;
-          if (pendingBlob) {
-            const next = pendingBlob;
-            pendingBlob = null;
-            processBlob(next);
-          }
-        };
-        img.onerror = () => {
-          isDecoding = false;
-          if (pendingBlob) {
-            const next = pendingBlob;
-            pendingBlob = null;
-            processBlob(next);
-          }
-        };
-      }
-    }
-
+    // 1. Nhận luồng Video trực tiếp siêu đồng bộ thời gian thực (ACK Pacing 60 FPS)
     function connectVideo() {
       const ws = new WebSocket('ws://' + host + ':8989/screen_feed_client');
       ws.binaryType = 'blob';
       ws.onmessage = function(e) {
-        processBlob(e.data);
+        if (window.createImageBitmap) {
+          createImageBitmap(e.data).then(bmp => {
+            if (canvas.width !== bmp.width || canvas.height !== bmp.height) {
+              canvas.width = bmp.width;
+              canvas.height = bmp.height;
+              ctx.imageSmoothingEnabled = false;
+              ctx.webkitImageSmoothingEnabled = false;
+              ctx.mozImageSmoothingEnabled = false;
+            }
+            ctx.drawImage(bmp, 0, 0);
+            bmp.close();
+            // Gửi tín hiệu ACK: P2 đã vẽ xong frame này, sẵn sàng cho frame tiếp theo
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send('1');
+            }
+          }).catch(() => {
+            if (ws.readyState === WebSocket.OPEN) ws.send('1');
+          });
+        } else {
+          const img = new Image();
+          img.src = URL.createObjectURL(e.data);
+          img.onload = () => {
+            if (canvas.width !== img.width || canvas.height !== img.height) {
+              canvas.width = img.width;
+              canvas.height = img.height;
+              ctx.imageSmoothingEnabled = false;
+            }
+            ctx.drawImage(img, 0, 0);
+            URL.revokeObjectURL(img.src);
+            if (ws.readyState === WebSocket.OPEN) ws.send('1');
+          };
+          img.onerror = () => {
+            if (ws.readyState === WebSocket.OPEN) ws.send('1');
+          };
+        }
       };
       ws.onclose = () => setTimeout(connectVideo, 1000);
     }
     connectVideo();
 
-    // 2. Nhận luồng Âm thanh PCM 16-bit và phát mượt mà đồng bộ thời gian thực
+    // 2. Nhận luồng Âm thanh PCM 16-bit nguyên bản 44.1kHz không trùng lặp
     function connectAudio() {
       const ws = new WebSocket('ws://' + host + ':8989/audio_feed');
       ws.binaryType = 'arraybuffer';
@@ -182,8 +153,8 @@ class ClanNetplayService {
         src.connect(actx.destination);
 
         const now = actx.currentTime;
-        if (nextAudioTime < now || nextAudioTime > now + 0.10) {
-          nextAudioTime = now + 0.02;
+        if (nextAudioTime < now || nextAudioTime > now + 0.08) {
+          nextAudioTime = now + 0.015;
         }
         src.start(nextAudioTime);
         nextAudioTime += buf.duration;
@@ -431,7 +402,14 @@ class ClanNetplayService {
   void _handleScreenFeedClient(WebSocket socket) {
     _screenClientSockets.add(socket);
     socket.listen(
-      (_) {},
+      (data) {
+        // Chuyển tiếp tín hiệu ACK từ P2 về cho máy phát Host để mở khóa frame tiếp theo
+        if (_screenFeedSocket != null && _screenFeedSocket?.readyState == WebSocket.open) {
+          try {
+            _screenFeedSocket?.add(data);
+          } catch (_) {}
+        }
+      },
       onDone: () => _screenClientSockets.remove(socket),
       onError: (_) => _screenClientSockets.remove(socket),
     );

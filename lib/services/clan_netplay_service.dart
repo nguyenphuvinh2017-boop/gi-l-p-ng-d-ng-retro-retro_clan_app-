@@ -8,6 +8,36 @@ class ClanNetplayService {
   static const int defaultWsPort = 8989;
   WebSocket? _audioSourceSocket;
   final List<WebSocket> _audioClientSockets = [];
+  WebSocket? _stateSyncSourceSocket;
+  final List<WebSocket> _stateSyncClientSockets = [];
+
+  void _handleStateSyncSource(WebSocket socket) {
+    try { _stateSyncSourceSocket?.close(); } catch (_) {}
+    _stateSyncSourceSocket = socket;
+    socket.listen(
+      (data) {
+        for (var client in List<WebSocket>.from(_stateSyncClientSockets)) {
+          try {
+            if (client.readyState == WebSocket.open) {
+              client.add(data);
+            }
+          } catch (_) {}
+        }
+      },
+      onDone: () => _stateSyncSourceSocket = null,
+      onError: (_) => _stateSyncSourceSocket = null,
+    );
+  }
+
+  void _handleStateSyncClient(WebSocket socket) {
+    _stateSyncClientSockets.add(socket);
+    socket.listen(
+      (_) {},
+      onDone: () => _stateSyncClientSockets.remove(socket),
+      onError: (_) => _stateSyncClientSockets.remove(socket),
+    );
+  }
+
 
   static const String _p2ScreenHtml = '''<!DOCTYPE html>
 <html>
@@ -368,7 +398,11 @@ class ClanNetplayService {
         if (WebSocketTransformer.isUpgradeRequest(request)) {
           final path = request.uri.path;
           final socket = await WebSocketTransformer.upgrade(request);
-          if (path.contains('screen_feed_client')) {
+          if (path.contains('state_sync_client')) {
+            _handleStateSyncClient(socket);
+          } else if (path.contains('state_sync')) {
+            _handleStateSyncSource(socket);
+          } else if (path.contains('screen_feed_client')) {
             _handleScreenFeedClient(socket);
           } else if (path.contains('screen_feed')) {
             _handleScreenFeedSource(socket);
@@ -887,6 +921,13 @@ class ClanNetplayService {
       try { client.close(); } catch (_) {}
     }
     _audioClientSockets.clear();
+
+    try { _stateSyncSourceSocket?.close(); } catch (_) {}
+    _stateSyncSourceSocket = null;
+    for (var client in List<WebSocket>.from(_stateSyncClientSockets)) {
+      try { client.close(); } catch (_) {}
+    }
+    _stateSyncClientSockets.clear();
 
     for (var client in List<WebSocket>.from(_screenClientSockets)) {
       try { client.close(); } catch (_) {}

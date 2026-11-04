@@ -8,7 +8,6 @@ import '../services/clan_netplay_service.dart';
 import '../services/app_language.dart';
 import '../services/rom_manager.dart';
 import 'emulator_screen.dart';
-import 'wireless_pad_screen.dart';
 
 class ClanLobbyScreen extends StatefulWidget {
   final ClanNetplayService clanService;
@@ -194,9 +193,10 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => WirelessPadScreen(
+          builder: (_) => EmulatorScreen(
+            game: matchedGame!,
             clanService: widget.clanService,
-            gameTitle: gameTitle,
+            isHost: false,
             hostIp: hostIp,
           ),
         ),

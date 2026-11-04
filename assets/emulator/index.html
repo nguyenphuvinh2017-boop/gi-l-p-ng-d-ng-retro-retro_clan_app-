@@ -702,180 +702,72 @@
 
     let screenFeedRafId = null;
 
-    function startLiveScreenFeed() {
-      stopLiveScreenFeed();
+    // ================= STATE SYNC CHO NETPLAY (ĐỒNG BỘ 100% QUÁI VẬT & MẠNG SỐNG) =================
+    let stateSyncWs = null;
+    let stateSyncTimer = null;
 
-      let lastFrameSentTime = 0;
-      let minIntervalTimer = null;
-      let watchdogTimer = null;
-      let pcHost = null;
-      let webrtcActive = false;
+    window.startStateSyncHost = function() {
+      window.stopStateSync();
+      try {
+        const host = window.location.hostname || '127.0.0.1';
+        stateSyncWs = new WebSocket('ws://' + host + ':8989/state_sync');
+        stateSyncWs.binaryType = 'arraybuffer';
+        stateSyncWs.onopen = function() {
+          // Gửi state đầu tiên sau 1.5s và 3s để P2 đồng bộ ngay từ ván đầu
+          setTimeout(window.sendStateSnapshot, 1500);
+          setTimeout(window.sendStateSnapshot, 3000);
+          // Định kỳ 3.5 giây gửi snapshot 1 lần để giữ 2 máy luôn khoá chặt cùng 1 vũ trụ game
+          stateSyncTimer = setInterval(window.sendStateSnapshot, 3500);
+        };
+      } catch(e) {}
+    };
 
-      function startWebRtcHost() {
-        try {
-          const cvs = document.querySelector('#game-container canvas') || 
-                      document.getElementById('nes-canvas') || 
-                      document.querySelector('canvas');
-          if (!cvs || typeof cvs.captureStream !== 'function') return false;
-
-          const stream = cvs.captureStream(60);
-          if (!stream) return false;
-
-          if (window.__clanAudioDestNode) {
-            try {
-              const aTracks = window.__clanAudioDestNode.stream.getAudioTracks();
-              if (aTracks.length > 0) stream.addTrack(aTracks[0]);
-            } catch(e) {}
+    window.sendStateSnapshot = function() {
+      try {
+        if (!stateSyncWs || stateSyncWs.readyState !== WebSocket.OPEN) return;
+        const gm = window.EJS_emulator && window.EJS_emulator.gameManager;
+        if (gm && typeof gm.getState === 'function') {
+          const state = gm.getState();
+          if (state && state.length > 0) {
+            stateSyncWs.send(state.buffer || state);
           }
+        }
+      } catch(e) {}
+    };
 
-          if (pcHost) { try { pcHost.close(); } catch(e) {} }
-          pcHost = new RTCPeerConnection({ iceServers: [] });
-
-          stream.getTracks().forEach(function(track) {
-            pcHost.addTrack(track, stream);
-          });
-
-          pcHost.onicecandidate = function(event) {
-            if (event.candidate && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
-              screenFeedWs.send(JSON.stringify({ type: 'webrtc_candidate', candidate: event.candidate }));
-            }
-          };
-
-          pcHost.createOffer({ offerToReceiveVideo: false, offerToReceiveAudio: false })
-            .then(function(offer) {
-              return pcHost.setLocalDescription(offer);
-            })
-            .then(function() {
-              if (screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
-                screenFeedWs.send(JSON.stringify({ type: 'webrtc_offer', sdp: pcHost.localDescription }));
+    window.startStateSyncClient = function(hostIp) {
+      window.stopStateSync();
+      try {
+        const host = hostIp || window.location.hostname || '127.0.0.1';
+        stateSyncWs = new WebSocket('ws://' + host + ':8989/state_sync_client');
+        stateSyncWs.binaryType = 'arraybuffer';
+        stateSyncWs.onmessage = function(e) {
+          try {
+            const gm = window.EJS_emulator && window.EJS_emulator.gameManager;
+            if (gm && typeof gm.loadState === 'function') {
+              const bytes = new Uint8Array(e.data);
+              if (bytes.length > 0) {
+                gm.loadState(bytes);
               }
-            })
-            .catch(function(err) {});
-          return true;
-        } catch(e) {
-          return false;
-        }
-      }
-
-      function sendNextFrame() {
-        if (webrtcActive) return; // WebRTC đã phát luồng phần cứng 60 FPS
-        if (!p2Connected) return;
-        if (!screenFeedWs || screenFeedWs.readyState !== WebSocket.OPEN) return;
-        if (isCapturingFrame) return;
-
-        try {
-          const cvs = document.querySelector('#game-container canvas') || 
-                      document.getElementById('nes-canvas') || 
-                      document.querySelector('canvas');
-          if (!cvs || cvs.width === 0 || cvs.height === 0) {
-            setTimeout(sendNextFrame, 20);
-            return;
-          }
-
-          if (screenFeedWs.bufferedAmount > 32768) {
-            setTimeout(sendNextFrame, 20);
-            return;
-          }
-
-          isCapturingFrame = true;
-          const cvsW = cvs.width;
-          const cvsH = cvs.height;
-          // Tỉ lệ chuẩn 4:3 siêu nét nhẹ tải (tối đa 512x384):
-          const targetW = cvsW > 512 ? 512 : cvsW;
-          const targetH = cvsW > 512 ? Math.round(cvsH * (512 / cvsW)) : cvsH;
-          const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas(targetW, targetH);
-          offCtx.drawImage(cvs, 0, 0, targetW, targetH);
-          offCvs.toBlob((blob) => {
-            try {
-              if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
-                lastFrameSentTime = performance.now();
-                screenFeedWs.send(blob);
-              }
-            } finally {
-              isCapturingFrame = false;
             }
-          }, 'image/jpeg', 0.82);
-        } catch(e) {
-          isCapturingFrame = false;
-        }
-      }
+          } catch(err) {}
+        };
+      } catch(e) {}
+    };
 
-      function onAckReceived() {
-        if (webrtcActive) return;
-        const now = performance.now();
-        const elapsed = now - lastFrameSentTime;
-        if (elapsed >= 16) {
-          sendNextFrame();
-        } else {
-          const waitTime = Math.max(1, Math.round(16 - elapsed));
-          if (minIntervalTimer) clearTimeout(minIntervalTimer);
-          minIntervalTimer = setTimeout(sendNextFrame, waitTime);
-        }
+    window.stopStateSync = function() {
+      if (stateSyncTimer) {
+        clearInterval(stateSyncTimer);
+        stateSyncTimer = null;
       }
-
-      function connectScreenWs() {
-        if (!p2Connected) return;
-        try {
-          const host = window.location.hostname || '127.0.0.1';
-          screenFeedWs = new WebSocket('ws://' + host + ':8989/screen_feed');
-          screenFeedWs.onopen = () => {
-            startWebRtcHost();
-            setTimeout(sendNextFrame, 100);
-          };
-          screenFeedWs.onmessage = (e) => {
-            if (typeof e.data === 'string') {
-              try {
-                const msg = JSON.parse(e.data);
-                if (msg.type === 'webrtc_answer' && pcHost) {
-                  pcHost.setRemoteDescription(new RTCSessionDescription(msg.sdp)).then(function() {
-                    webrtcActive = true;
-                  }).catch(function() {});
-                } else if (msg.type === 'webrtc_candidate' && pcHost) {
-                  pcHost.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(function() {});
-                }
-              } catch(err) {
-                onAckReceived();
-              }
-            } else {
-              onAckReceived();
-            }
-          };
-          screenFeedWs.onclose = () => {
-            if (p2Connected) setTimeout(connectScreenWs, 1000);
-          };
-        } catch(e) {}
+      if (stateSyncWs) {
+        try { stateSyncWs.close(); } catch(e) {}
+        stateSyncWs = null;
       }
-      connectScreenWs();
+    };
 
-      watchdogTimer = setInterval(() => {
-        if (!webrtcActive && p2Connected && (performance.now() - lastFrameSentTime > 50)) {
-          sendNextFrame();
-        }
-      }, 40);
-
-      window.__clanStopWatchdog = () => {
-        if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
-        if (minIntervalTimer) { clearTimeout(minIntervalTimer); minIntervalTimer = null; }
-        if (pcHost) { try { pcHost.close(); } catch(e) {} pcHost = null; }
-        webrtcActive = false;
-      };
-    }
-
-    function stopLiveScreenFeed() {
-      if (window.__clanStopWatchdog) {
-        window.__clanStopWatchdog();
-      }
-      if (screenFeedInterval) {
-        clearInterval(screenFeedInterval);
-        screenFeedInterval = null;
-      }
-      if (screenFeedWs) {
-        try { screenFeedWs.close(); } catch(e) {}
-        screenFeedWs = null;
-      }
-      isCapturingFrame = false;
-    }
-
+    function startLiveScreenFeed() {}
+    function stopLiveScreenFeed() {}
     // ================= AUDIO STREAMING CHO P2 =================
     let audioFeedWs = null;
     let audioFeedTimer = null;
@@ -895,7 +787,7 @@
         const proc = actx.createScriptProcessor(2048, 1, 1);
         actx.__clanAudioProcessor = proc;
 
-        proc.onaudioprocess = function(e) {
+        proc.onaudioprocess = function(e) { return;
           if (!p2Connected || !audioFeedWs || audioFeedWs.readyState !== WebSocket.OPEN) return;
           const f32 = e.inputBuffer.getChannelData(0);
           const len = f32.length;
@@ -1019,17 +911,10 @@
       } catch(e) {}
     };
 
-    window.setP2Status = function(connected, enableStreaming = true) {
+    window.setP2Status = function(connected) {
       p2Connected = connected;
       if (connected) {
         window.activatePlayer2();
-        if (enableStreaming) {
-          startLiveScreenFeed();
-          startLiveAudioFeed();
-        }
-      } else {
-        stopLiveScreenFeed();
-        stopLiveAudioFeed();
       }
     };
 

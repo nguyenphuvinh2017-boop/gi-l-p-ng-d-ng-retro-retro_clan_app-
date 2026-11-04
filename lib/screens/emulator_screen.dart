@@ -63,7 +63,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
   bool _isAutoGrindActive = false;
   Timer? _autoGrindTimer;
   bool _isCrtFilterActive = false;
-  Timer? _rewindAutoSaveTimer;
+
 
   @override
   void initState() {
@@ -76,9 +76,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
     }
     _loadGamepadSettings();
     _startLocalServerAndEngine();
-    _rewindAutoSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      _runJs("if(window.EJS_emulator && typeof window.EJS_emulator.saveState === 'function') window.EJS_emulator.saveState(9);");
-    });
+
   }
 
   @override
@@ -94,7 +92,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
     _localServer?.close(force: true);
     _proxyHttpClient?.close(force: true);
     _autoGrindTimer?.cancel();
-    _rewindAutoSaveTimer?.cancel();
+
     try {
       _winController?.dispose();
     } catch (_) {}
@@ -477,7 +475,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
         gameTitle: widget.game.title,
         console: widget.game.console,
         onApplyCheat: (code, enabled) {
-          _runJs("if(typeof window.applyCheatCode === 'function') window.applyCheatCode('$code');");
+          _runJs("if(typeof window.applyCheatCode === 'function') window.applyCheatCode('$code', $enabled);");
         },
       ),
     );

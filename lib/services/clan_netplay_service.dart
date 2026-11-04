@@ -14,6 +14,7 @@ class ClanNetplayService {
 
   // Client connection
   WebSocket? _clientSocket;
+  String? lastJoinError;
 
   // Callbacks
   Function(String btn, bool isDown)? onPlayer2InputReceived;
@@ -178,8 +179,10 @@ class ClanNetplayService {
 
   void _handleP2Connection(WebSocket socket, String gameTitle) {
     if (_p2Socket != null) {
-      socket.close(WebSocketStatus.normalClosure, 'Room Full');
-      return;
+      try {
+        _p2Socket?.close(WebSocketStatus.normalClosure, 'Replaced by new connection');
+      } catch (_) {}
+      _p2Socket = null;
     }
 
     _p2Socket = socket;
@@ -242,7 +245,11 @@ class ClanNetplayService {
             final raw = utf8.decode(datagram.data);
             final msg = LanMessage.deserialize(raw);
             if (msg != null && msg.type == LanMessageType.beacon) {
-              final hostIp = msg.payload['hostIp'] as String? ?? datagram.address.address;
+              final senderIp = datagram.address.address;
+              String hostIp = senderIp;
+              if (senderIp == '127.0.0.1' || senderIp == '0.0.0.0') {
+                hostIp = msg.payload['hostIp'] as String? ?? senderIp;
+              }
               final port = msg.payload['port'] as int? ?? defaultWsPort;
               final roomName = msg.payload['roomName'] as String? ?? 'Clan Room';
               final gameTitle = msg.payload['gameTitle'] as String? ?? 'Retro Game';
@@ -312,7 +319,7 @@ class ClanNetplayService {
             if (res.statusCode == HttpStatus.ok) {
               final body = await res.transform(utf8.decoder).join();
               final json = jsonDecode(body) as Map<String, dynamic>;
-              final hostIp = json['hostIp'] as String? ?? targetIp;
+              final hostIp = targetIp;
               final roomName = json['roomName'] as String? ?? 'Phòng Clan';
               final gameTitle = json['gameTitle'] as String? ?? 'Game';
               final port = json['port'] as int? ?? defaultWsPort;
@@ -339,11 +346,25 @@ class ClanNetplayService {
     int port = defaultWsPort,
     required Function(String gameTitle) onJoined,
   }) async {
+    lastJoinError = null;
     try {
-      final cleanIp = hostIp.trim();
-      final wsUrl = 'ws://$cleanIp:$port';
+      String cleanIp = hostIp.trim();
+      int targetPort = port;
+      if (cleanIp.contains(':')) {
+        final parts = cleanIp.split(':');
+        cleanIp = parts[0].trim();
+        targetPort = int.tryParse(parts[1].trim()) ?? port;
+      }
+
+      // Đóng kết nối cũ nếu có
+      try {
+        await _clientSocket?.close();
+      } catch (_) {}
+      _clientSocket = null;
+
+      final wsUrl = 'ws://$cleanIp:$targetPort';
       print('Connecting to $wsUrl');
-      _clientSocket = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 8));
+      _clientSocket = await WebSocket.connect(wsUrl).timeout(const Duration(seconds: 6));
 
       _clientSocket?.listen(
         (data) {
@@ -356,7 +377,8 @@ class ClanNetplayService {
         onDone: () {
           _clientSocket = null;
         },
-        onError: (_) {
+        onError: (err) {
+          print('Client socket error: $err');
           _clientSocket = null;
         },
       );
@@ -364,6 +386,7 @@ class ClanNetplayService {
       return true;
     } catch (e) {
       print('Failed to join clan room: $e');
+      lastJoinError = e.toString();
       _clientSocket = null;
       return false;
     }

@@ -164,6 +164,22 @@
   </div>
 
   <script>
+    // Theo dõi và mở khóa toàn bộ AudioContext được tạo bởi WebAssembly / EmulatorJS / iOS WebKit
+    const capturedAudioContexts = [];
+    const OrigAudioContext = window.AudioContext || window.webkitAudioContext;
+    if (OrigAudioContext) {
+      const ProxiedAudioContext = function(...args) {
+        const instance = new OrigAudioContext(...args);
+        capturedAudioContexts.push(instance);
+        return instance;
+      };
+      ProxiedAudioContext.prototype = OrigAudioContext.prototype;
+      window.AudioContext = ProxiedAudioContext;
+      if (window.webkitAudioContext) {
+        window.webkitAudioContext = ProxiedAudioContext;
+      }
+    }
+
     const canvas = document.getElementById('nes-canvas');
     const ctx = canvas.getContext('2d');
     const statusOverlay = document.getElementById('status-overlay');
@@ -213,12 +229,28 @@
     // Mở khóa âm thanh Web Audio / WebKit trên iOS ngay khi có chạm màn hình hoặc bấm nút
     function unlockAudio() {
       try {
+        for (let i = 0; i < capturedAudioContexts.length; i++) {
+          const ac = capturedAudioContexts[i];
+          if (ac && ac.state === 'suspended') {
+            ac.resume().catch(function() {});
+          }
+        }
         if (audioCtx && audioCtx.state === 'suspended') {
           audioCtx.resume().catch(function() {});
         }
         if (window.EJS_emulator) {
+          if (typeof window.EJS_emulator.unmute === 'function') window.EJS_emulator.unmute();
+          if (typeof window.EJS_emulator.setVolume === 'function') window.EJS_emulator.setVolume(1.0);
           if (window.EJS_emulator.audioContext && window.EJS_emulator.audioContext.state === 'suspended') {
             window.EJS_emulator.audioContext.resume().catch(function() {});
+          }
+          if (window.EJS_emulator.gameManager) {
+            if (window.EJS_emulator.gameManager.audioCtx && window.EJS_emulator.gameManager.audioCtx.state === 'suspended') {
+              window.EJS_emulator.gameManager.audioCtx.resume().catch(function() {});
+            }
+            if (typeof window.EJS_emulator.gameManager.setVolume === 'function') {
+              window.EJS_emulator.gameManager.setVolume(1.0);
+            }
           }
           if (window.EJS_emulator.paused && typeof window.EJS_emulator.play === 'function') {
             const p = window.EJS_emulator.play();
@@ -437,13 +469,28 @@
     };
 
     window.setSpeed = function(multiplier) {
-      speedRate = multiplier || 1;
+      speedRate = Number(multiplier) || 1;
       if (window.EJS_emulator) {
         try {
-          if (typeof window.EJS_emulator.setSpeed === 'function') {
-            window.EJS_emulator.setSpeed(speedRate);
-          } else if (window.EJS_emulator.gameManager && typeof window.EJS_emulator.gameManager.setSpeed === 'function') {
-            window.EJS_emulator.gameManager.setSpeed(speedRate);
+          const emu = window.EJS_emulator;
+          const gm = emu.gameManager;
+          if (typeof emu.setSpeed === 'function') {
+            emu.setSpeed(speedRate);
+          }
+          if (gm && typeof gm.setSpeed === 'function') {
+            gm.setSpeed(speedRate);
+          }
+          if (gm && gm.functions && typeof gm.functions.setSpeed === 'function') {
+            gm.functions.setSpeed(speedRate);
+          }
+          if (typeof emu.setFastForward === 'function') {
+            emu.setFastForward(speedRate > 1);
+          }
+          if (gm && typeof gm.setFastForward === 'function') {
+            gm.setFastForward(speedRate > 1);
+          }
+          if (emu.Module && typeof emu.Module._set_fastforward === 'function') {
+            emu.Module._set_fastforward(speedRate > 1 ? 1 : 0);
           }
         } catch(e) {}
       }
@@ -469,16 +516,50 @@
       }
     };
 
-    window.applyCheatCode = function(cheatCode) {
-      if (window.EJS_emulator && window.EJS_emulator.gameManager) {
+    window.activeCheats = window.activeCheats || {};
+    window.applyCheatCode = function(cheatCode, enabled) {
+      if (enabled === undefined) enabled = true;
+      window.activeCheats[cheatCode] = enabled;
+
+      if (window.EJS_emulator) {
+        const emu = window.EJS_emulator;
+        const gm = emu.gameManager;
         try {
-          if (typeof window.EJS_emulator.gameManager.addCheat === 'function') {
-            window.EJS_emulator.gameManager.addCheat(cheatCode);
-            return true;
+          if (gm) {
+            if (typeof gm.setCheat === 'function') {
+              gm.setCheat(cheatCode, enabled);
+            }
+            if (enabled && typeof gm.addCheat === 'function') {
+              gm.addCheat(cheatCode);
+            }
+            if (gm.cheats && Array.isArray(gm.cheats)) {
+              const existing = gm.cheats.find(c => c.code === cheatCode);
+              if (existing) {
+                existing.enabled = enabled;
+              } else if (enabled) {
+                gm.cheats.push({ code: cheatCode, enabled: true });
+              }
+            }
+          }
+          if (typeof emu.addCheat === 'function' && enabled) {
+            emu.addCheat(cheatCode);
           }
         } catch(e) {}
       }
-      return false;
+
+      if (!isEmulatorJsMode && isRunning && nes) {
+        try {
+          const parts = cheatCode.split(':');
+          if (parts.length === 2 && nes.mmap && typeof nes.mmap.write === 'function') {
+            const addr = parseInt(parts[0], 16);
+            const val = parseInt(parts[1], 16);
+            if (!isNaN(addr) && !isNaN(val) && enabled) {
+              nes.mmap.write(addr, val);
+            }
+          }
+        } catch(e) {}
+      }
+      return true;
     };
 
     window.setP2Status = function(connected) {

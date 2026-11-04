@@ -136,9 +136,16 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
     }
   }
 
-  Future<void> _joinHost(String hostIp) async {
+  Future<void> _joinHost(String hostIp, {int? port}) async {
     String cleanIp = hostIp.trim();
     if (cleanIp.isEmpty) return;
+
+    int targetPort = port ?? ClanNetplayService.defaultWsPort;
+    if (cleanIp.contains(':')) {
+      final parts = cleanIp.split(':');
+      cleanIp = parts[0].trim();
+      targetPort = int.tryParse(parts[1].trim()) ?? targetPort;
+    }
 
     // Hỗ trợ nhập số cuối (ví dụ nhập 15 tự mở rộng thành 192.168.1.15)
     if (int.tryParse(cleanIp) != null) {
@@ -154,6 +161,7 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
 
     final success = await widget.clanService.joinClanRoom(
       hostIp: cleanIp,
+      port: targetPort,
       onJoined: (gameTitle) {
         if (mounted) {
           setState(() {
@@ -177,10 +185,14 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
       setState(() {
         _isJoining = false;
       });
+      final errDetail = widget.clanService.lastJoinError != null
+          ? '\nChi tiết: ${widget.clanService.lastJoinError}'
+          : '';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: Colors.redAccent,
-          content: Text('Không thể kết nối tới $cleanIp. Hãy đảm bảo 2 máy cùng bắt 1 mạng Wi-Fi!'),
+          duration: const Duration(seconds: 4),
+          content: Text('Không thể kết nối tới $cleanIp:$targetPort. Hãy đảm bảo 2 máy cùng Wi-Fi và đã bật Mạng cục bộ trên iOS!$errDetail'),
         ),
       );
     }
@@ -586,7 +598,7 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
                     subtitle: Text('IP Chủ phòng: ${room.hostIp}:${room.port}', style: const TextStyle(color: Colors.greenAccent, fontSize: 12)),
                     trailing: ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFF2A55)),
-                      onPressed: _isJoining ? null : () => _joinHost(room.hostIp),
+                      onPressed: _isJoining ? null : () => _joinHost(room.hostIp, port: room.port),
                       child: const Text('Vào làm P2', style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
                   ),

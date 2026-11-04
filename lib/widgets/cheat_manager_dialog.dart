@@ -338,11 +338,16 @@ class _CheatManagerDialogState extends State<CheatManagerDialog> {
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF1E88E5),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  elevation: 2,
                 ),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Thêm mã Cheat tự do', style: TextStyle(fontWeight: FontWeight.bold)),
+                icon: const Icon(Icons.add_circle_outline, size: 20, color: Colors.white),
+                label: const Text(
+                  '+ THÊM MÃ CHEAT MỚI',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white, letterSpacing: 0.5),
+                ),
                 onPressed: _showAddCheatDialog,
               ),
             ),

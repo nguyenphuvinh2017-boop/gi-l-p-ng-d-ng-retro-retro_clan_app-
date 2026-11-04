@@ -10,6 +10,7 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 import 'package:webview_windows/webview_windows.dart';
 import '../models/game_item.dart';
 import '../services/clan_netplay_service.dart';
+import '../services/app_language.dart';
 import '../widgets/arcade_gamepad.dart';
 import '../widgets/arcade_settings_dialog.dart';
 import '../widgets/cheat_manager_dialog.dart';
@@ -766,8 +767,40 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
           }
         },
         onReset: () => _runJs("window.resetGame();"),
-        onSave: () => _runJs("if(window.EJS_emulator) window.EJS_emulator.saveState();"),
-        onLoad: () => _runJs("if(window.EJS_emulator) window.EJS_emulator.loadState();"),
+        onSave: () {
+          _runJs("if(typeof window.saveGameState === 'function') { window.saveGameState(); } else if(window.EJS_emulator) { window.EJS_emulator.saveState(1); }");
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xFF00C853),
+              duration: const Duration(seconds: 2),
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Text(AppLanguage.tr('game_saved'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          );
+        },
+        onLoad: () {
+          _runJs("if(typeof window.loadGameState === 'function') { window.loadGameState(); } else if(window.EJS_emulator) { window.EJS_emulator.loadState(1); }");
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xFF29A3FF),
+              duration: const Duration(seconds: 2),
+              content: Row(
+                children: [
+                  const Icon(Icons.history, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Text(AppLanguage.tr('game_reloaded'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          );
+        },
         onRotate: _toggleRotation,
         onOpenLan: _showClanRoomDialog,
         onVolumeChanged: (vol) => _runJs("if(window.EJS_emulator) window.EJS_emulator.setVolume($vol);"),

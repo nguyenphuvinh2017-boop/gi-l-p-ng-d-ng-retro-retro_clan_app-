@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import '../models/game_item.dart';
 import '../services/rom_manager.dart';
 import '../services/clan_netplay_service.dart';
+import '../services/app_language.dart';
 import '../services/retro_metadata_service.dart';
 import 'emulator_screen.dart';
 
@@ -468,8 +469,8 @@ class HomeScreenState extends State<HomeScreen> {
               ),
               child: TextField(
                 style: const TextStyle(color: Colors.white, fontSize: 13),
-                decoration: const InputDecoration(
-                  hintText: 'Tìm trò chơi...',
+                decoration: InputDecoration(
+                  hintText: AppLanguage.tr('search_placeholder'),
                   hintStyle: TextStyle(color: Colors.white38, fontSize: 13),
                   prefixIcon: Icon(Icons.search, color: Color(0xFF29A3FF), size: 20),
                   border: InputBorder.none,
@@ -543,7 +544,7 @@ class HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     child: Text(
-                      sys['label']!,
+                      (sys['key'] == 'ALL' ? AppLanguage.tr('filter_all') : sys['label']!),
                       style: TextStyle(
                         color: isSelected ? Colors.white : Colors.white70,
                         fontSize: 12,
@@ -604,7 +605,15 @@ class HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   child: Text(
-                    f['label']!,
+                    (f['key'] == 'ALL'
+                        ? AppLanguage.tr('filter_all')
+                        : f['key'] == 'RECENT'
+                            ? AppLanguage.tr('filter_recent')
+                            : f['key'] == 'FAVORITE'
+                                ? AppLanguage.tr('filter_favorites')
+                                : f['key'] == 'CONTINUE'
+                                    ? AppLanguage.tr('filter_continue')
+                                    : 'A–Z'),
                     style: TextStyle(
                       color: isSelected ? Colors.white : Colors.white60,
                       fontSize: 11,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/app_language.dart';
 
 class ArcadeSettingsDialog extends StatefulWidget {
   final VoidCallback onExit;
@@ -213,31 +214,31 @@ class _ArcadeSettingsDialogState extends State<ArcadeSettingsDialog> {
             runSpacing: 10,
             alignment: WrapAlignment.center,
             children: [
-              _buildActionSquare('THOÁT', Icons.logout, () {
+              _buildActionSquare(AppLanguage.tr('exit'), Icons.logout, () {
                 Navigator.pop(context);
                 widget.onExit();
               }),
-              _buildActionSquare('LƯU', Icons.save, () {
+              _buildActionSquare(AppLanguage.tr('save'), Icons.save, () {
                 Navigator.pop(context);
                 widget.onSave();
               }),
-              _buildActionSquare('NẠP BẢN LƯU', Icons.folder_open, () {
+              _buildActionSquare(AppLanguage.tr('reload_save'), Icons.folder_open, () {
                 Navigator.pop(context);
                 widget.onLoad();
               }),
-              _buildActionSquare('CHƠI LẠI', Icons.refresh, () {
+              _buildActionSquare(AppLanguage.tr('restart'), Icons.refresh, () {
                 Navigator.pop(context);
                 widget.onReset();
               }),
-              _buildActionSquare('XOAY', Icons.screen_rotation, () {
+              _buildActionSquare(AppLanguage.tr('rotate'), Icons.screen_rotation, () {
                 Navigator.pop(context);
                 widget.onRotate();
               }),
-              _buildActionSquare('CHIẾU MÀN HÌNH', Icons.cast, () {
+              _buildActionSquare(AppLanguage.tr('cast'), Icons.cast, () {
                 Navigator.pop(context);
                 widget.onOpenLan();
               }),
-              _buildActionSquare('CHEAT ENGINE', Icons.bolt, () {
+              _buildActionSquare(AppLanguage.tr('cheat_engine'), Icons.bolt, () {
                 Navigator.pop(context);
                 if (widget.onOpenCheat != null) {
                   widget.onOpenCheat!();
@@ -245,7 +246,7 @@ class _ArcadeSettingsDialogState extends State<ArcadeSettingsDialog> {
                   _showCheatDialog();
                 }
               }),
-              _buildActionSquare('TUA LÙI 10S', Icons.fast_rewind, () {
+              _buildActionSquare(AppLanguage.tr('rewind_10s'), Icons.fast_rewind, () {
                 Navigator.pop(context);
                 widget.onRewind?.call();
               }),

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/app_language.dart';
 
 class AppSettingsDialog extends StatefulWidget {
   const AppSettingsDialog({super.key});
@@ -27,7 +28,7 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> with SingleTicker
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadSettings();
   }
 
@@ -151,9 +152,9 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> with SingleTicker
                           child: const Icon(Icons.settings, color: Color(0xFF29A3FF), size: 20),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'CÀI ĐẶT RETROCLAN',
+                            AppLanguage.tr('settings_title'),
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 16,
@@ -183,10 +184,11 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> with SingleTicker
                       labelColor: const Color(0xFF29A3FF),
                       unselectedLabelColor: Colors.white60,
                       labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                      tabs: const [
-                        Tab(icon: Icon(Icons.sports_esports, size: 18), text: 'TAY CẦM'),
-                        Tab(icon: Icon(Icons.wifi, size: 18), text: 'MẠNG LAN'),
-                        Tab(icon: Icon(Icons.info_outline, size: 18), text: 'THÔNG TIN'),
+                      tabs: [
+                        Tab(icon: const Icon(Icons.sports_esports, size: 18), text: AppLanguage.tr('tab_gamepad')),
+                        Tab(icon: const Icon(Icons.wifi, size: 18), text: AppLanguage.tr('tab_lan')),
+                        Tab(icon: const Icon(Icons.language, size: 18), text: AppLanguage.tr('tab_system')),
+                        Tab(icon: const Icon(Icons.info_outline, size: 18), text: AppLanguage.tr('tab_info')),
                       ],
                     ),
                   ),
@@ -198,6 +200,7 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> with SingleTicker
                       children: [
                         _buildGamepadTab(),
                         _buildLanTab(),
+                        _buildLanguageTab(),
                         _buildInfoTab(),
                       ],
                     ),
@@ -214,7 +217,7 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> with SingleTicker
                       children: [
                         TextButton(
                           onPressed: () => Navigator.pop(context),
-                          child: const Text('ĐÓNG', style: TextStyle(color: Colors.white60)),
+                          child: Text(AppLanguage.tr('close'), style: const TextStyle(color: Colors.white60)),
                         ),
                         const SizedBox(width: 8),
                         ElevatedButton.icon(
@@ -225,15 +228,15 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> with SingleTicker
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
                           icon: const Icon(Icons.check, size: 18),
-                          label: const Text('LƯU CÀI ĐẶT', style: TextStyle(fontWeight: FontWeight.bold)),
+                          label: Text(AppLanguage.tr('save_settings'), style: const TextStyle(fontWeight: FontWeight.bold)),
                           onPressed: () async {
                             await _saveSettings();
                             if (context.mounted) {
                               Navigator.pop(context);
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
+                                SnackBar(
                                   backgroundColor: Color(0xFF1B2A4A),
-                                  content: Text('✅ Đã lưu cấu hình cài đặt thành công!'),
+                                  content: Text(AppLanguage.tr('settings_saved')),
                                 ),
                               );
                             }
@@ -436,6 +439,84 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> with SingleTicker
           style: TextStyle(color: Colors.white60, fontSize: 11, height: 1.4),
         ),
       ],
+    );
+  }
+
+  Widget _buildLanguageTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            AppLanguage.tr('language_select'),
+            style: const TextStyle(color: Color(0xFF29A3FF), fontWeight: FontWeight.bold, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          _buildLanguageOption(
+            title: AppLanguage.tr('lang_vi'),
+            subtitle: AppLanguage.isEnglish ? 'Vietnamese interface' : 'Toàn bộ giao diện tiếng Việt',
+            isSelected: !AppLanguage.isEnglish,
+            onTap: () async {
+              await AppLanguage.setLanguage('vi');
+              setState(() {});
+            },
+          ),
+          const SizedBox(height: 10),
+          _buildLanguageOption(
+            title: AppLanguage.tr('lang_en'),
+            subtitle: AppLanguage.isEnglish ? 'Full English interface' : 'Toàn bộ giao diện tiếng Anh',
+            isSelected: AppLanguage.isEnglish,
+            onTap: () async {
+              await AppLanguage.setLanguage('en');
+              setState(() {});
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLanguageOption({
+    required String title,
+    required String subtitle,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF29A3FF).withValues(alpha: 0.15) : const Color(0xFF131C31),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF29A3FF) : Colors.white12,
+            width: isSelected ? 1.8 : 1.0,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: isSelected ? const Color(0xFF29A3FF) : Colors.white38,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white)),
+                  const SizedBox(height: 2),
+                  Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.white60)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

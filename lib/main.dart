@@ -5,10 +5,12 @@ import 'screens/home_screen.dart';
 import 'screens/browse_retrostic_screen.dart';
 import 'screens/clan_lobby_screen.dart';
 import 'services/clan_netplay_service.dart';
+import 'services/app_language.dart';
 import 'widgets/app_settings_dialog.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppLanguage.init();
   if (!Platform.isWindows) {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     SystemChrome.setPreferredOrientations([
@@ -24,25 +26,31 @@ class RetroClanApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Retro Clan Play',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF090D18),
-        primaryColor: const Color(0xFF1E88E5),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF1E88E5),
-          secondary: Color(0xFF29A3FF),
-          surface: Color(0xFF131C31),
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0F1626),
-          elevation: 0,
-          centerTitle: false,
-        ),
-      ),
-      home: const MainNavigationScreen(),
+    return ValueListenableBuilder<String>(
+      valueListenable: AppLanguage.currentLocale,
+      builder: (context, locale, _) {
+        return MaterialApp(
+          key: ValueKey(locale),
+          title: 'Retro Clan Play',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            brightness: Brightness.dark,
+            scaffoldBackgroundColor: const Color(0xFF090D18),
+            primaryColor: const Color(0xFF1E88E5),
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFF1E88E5),
+              secondary: Color(0xFF29A3FF),
+              surface: Color(0xFF131C31),
+            ),
+            appBarTheme: const AppBarTheme(
+              backgroundColor: Color(0xFF0F1626),
+              elevation: 0,
+              centerTitle: false,
+            ),
+          ),
+          home: const MainNavigationScreen(),
+        );
+      },
     );
   }
 }
@@ -224,7 +232,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 _buildDockBtn(
                   index: 0,
                   icon: Icons.sports_esports,
-                  label: 'MÀN HÌNH CHÍNH',
+                  label: AppLanguage.tr('nav_home'),
                   gradientColors: [const Color(0xFFFFB300), const Color(0xFFE65100)],
                   isActive: _currentIndex == 0,
                 ),
@@ -233,7 +241,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   index: 1,
                   icon: Icons.add_box_rounded,
                   badgeIcon: Icons.add,
-                  label: 'THÊM GAME',
+                  label: AppLanguage.tr('nav_add_game'),
                   gradientColors: [const Color(0xFF42A5F5), const Color(0xFF1565C0)],
                   isActive: false,
                 ),
@@ -241,7 +249,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 _buildDockBtn(
                   index: 2,
                   icon: Icons.lan,
-                  label: 'MẠNG LAN',
+                  label: AppLanguage.tr('nav_lan'),
                   gradientColors: [const Color(0xFF00E5FF), const Color(0xFF0091EA)],
                   isActive: _currentIndex == 2,
                 ),
@@ -249,7 +257,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 _buildDockBtn(
                   index: 3,
                   icon: Icons.public,
-                  label: 'ONLINE',
+                  label: AppLanguage.tr('nav_online'),
                   gradientColors: [const Color(0xFF29B6F6), const Color(0xFF0277BD)],
                   isActive: _currentIndex == 1,
                 ),

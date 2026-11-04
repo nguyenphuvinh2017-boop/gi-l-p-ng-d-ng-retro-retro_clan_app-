@@ -685,9 +685,9 @@
     function getOffscreenCanvas() {
       if (!offscreenCanvas) {
         offscreenCanvas = document.createElement('canvas');
-        // Chuẩn độ phân giải native retro 320x240: Cực nhẹ (<1ms encode), 0% giật lag, cực mượt 30 FPS
-        offscreenCanvas.width = 320;
-        offscreenCanvas.height = 240;
+        // Chuẩn độ phân giải Full HD Retro 640x480: Siêu sắc nét 2x Integer Scale, hạt pixel rõ ràng
+        offscreenCanvas.width = 640;
+        offscreenCanvas.height = 480;
         offscreenCtx = offscreenCanvas.getContext('2d', { alpha: false });
         offscreenCtx.imageSmoothingEnabled = false;
         offscreenCtx.webkitImageSmoothingEnabled = false;
@@ -728,7 +728,7 @@
 
           isCapturingFrame = true;
           const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas();
-          offCtx.drawImage(cvs, 0, 0, 320, 240);
+          offCtx.drawImage(cvs, 0, 0, 640, 480);
           offCvs.toBlob((blob) => {
             try {
               if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
@@ -737,7 +737,7 @@
             } finally {
               isCapturingFrame = false;
             }
-          }, 'image/jpeg', 0.72);
+          }, 'image/jpeg', 0.80);
         } catch(e) {
           isCapturingFrame = false;
         }
@@ -757,6 +757,34 @@
     }
 
     // ================= AUDIO STREAMING CHO P2 =================
+    // Tự động bắt toàn bộ luồng âm thanh game qua ScriptProcessor của Web Audio
+    (function() {
+      const OrigAC = window.AudioContext || window.webkitAudioContext;
+      if (OrigAC) {
+        const origCreateSP = OrigAC.prototype.createScriptProcessor;
+        OrigAC.prototype.createScriptProcessor = function(...args) {
+          const node = origCreateSP.apply(this, args);
+          node.addEventListener('audioprocess', function(e) {
+            if (!p2Connected || !audioFeedWs || audioFeedWs.readyState !== WebSocket.OPEN) return;
+            try {
+              const out = e.outputBuffer;
+              if (out && out.numberOfChannels > 0) {
+                const chan = out.getChannelData(0);
+                const len = chan.length;
+                if (len === 0) return;
+                const i16 = new Int16Array(len);
+                for (let i = 0; i < len; i++) {
+                  let s = Math.max(-1, Math.min(1, chan[i]));
+                  i16[i] = s < 0 ? (s * 32768) | 0 : (s * 32767) | 0;
+                }
+                audioFeedWs.send(i16.buffer);
+              }
+            } catch(e) {}
+          });
+          return node;
+        };
+      }
+    })();
     let audioFeedWs = null;
     let audioFeedTimer = null;
     window.__capturedAudioNodes = window.__capturedAudioNodes || [];
@@ -897,6 +925,105 @@
         stopLiveScreenFeed();
         stopLiveAudioFeed();
       }
+    };
+
+    // Hiển thị thông báo Toast phong cách RetroClan
+    function showToast(msg) {
+      try {
+        let toast = document.getElementById('clan-toast');
+        if (!toast) {
+          toast = document.createElement('div');
+          toast.id = 'clan-toast';
+          toast.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);background:rgba(19,28,49,0.92);border:1.5px solid #00E5FF;color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:bold;font-family:sans-serif;z-index:99999;box-shadow:0 4px 15px rgba(0,0,0,0.7);transition:opacity 0.3s;pointer-events:none;';
+          document.body.appendChild(toast);
+        }
+        toast.innerText = msg;
+        toast.style.opacity = '1';
+        toast.style.display = 'block';
+        clearTimeout(window.__toastTimer);
+        window.__toastTimer = setTimeout(() => {
+          toast.style.opacity = '0';
+          setTimeout(() => toast.style.display = 'none', 300);
+        }, 2500);
+      } catch(_) {}
+    }
+
+    // 1. Lưu tiến trình game hiện tại (Save State bền vững vào localStorage & Slot 1)
+    window.saveGameState = function() {
+      try {
+        const titleKey = currentGameTitle || 'game_progress';
+        if (!isEmulatorJsMode && nes) {
+          const state = nes.toJSON();
+          localStorage.setItem('retroclan_nes_' + titleKey, JSON.stringify(state));
+          showToast('✅ Đã lưu tiến trình game!');
+          return true;
+        } else if (window.EJS_emulator) {
+          // Lưu vào slot 1 EmulatorJS
+          if (typeof window.EJS_emulator.saveState === 'function') {
+            window.EJS_emulator.saveState(1);
+          }
+          // Lưu raw buffer trực tiếp vào localStorage để chắc chắn không mất sau khi thoát
+          try {
+            const gm = window.EJS_emulator.gameManager;
+            if (gm && typeof gm.getState === 'function') {
+              const stateBuf = gm.getState();
+              if (stateBuf && stateBuf.length > 0) {
+                let bin = '';
+                const bytes = new Uint8Array(stateBuf.buffer || stateBuf);
+                const len = bytes.byteLength;
+                for (let i = 0; i < len; i++) {
+                  bin += String.fromCharCode(bytes[i]);
+                }
+                const b64 = btoa(bin);
+                localStorage.setItem('retroclan_state_' + titleKey, b64);
+              }
+            }
+          } catch(e) {}
+          showToast('✅ Đã lưu tiến trình game!');
+          return true;
+        }
+      } catch(e) {
+        console.error('Save state error:', e);
+      }
+      return false;
+    };
+
+    // 2. Tải lại tiến trình game đã lưu (Reload Save State)
+    window.loadGameState = function() {
+      try {
+        const titleKey = currentGameTitle || 'game_progress';
+        if (!isEmulatorJsMode && nes) {
+          const data = localStorage.getItem('retroclan_nes_' + titleKey);
+          if (data) {
+            nes.fromJSON(JSON.parse(data));
+            showToast('⚡ Đã tải lại tiến trình game!');
+            return true;
+          }
+        } else if (window.EJS_emulator) {
+          // Thử load từ slot 1 của EmulatorJS
+          if (typeof window.EJS_emulator.loadState === 'function') {
+            window.EJS_emulator.loadState(1);
+          }
+          // Thử load từ raw buffer trong localStorage nếu có
+          try {
+            const gm = window.EJS_emulator.gameManager;
+            const b64 = localStorage.getItem('retroclan_state_' + titleKey);
+            if (b64 && gm && typeof gm.loadState === 'function') {
+              const bin = atob(b64);
+              const bytes = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) {
+                bytes[i] = bin.charCodeAt(i);
+              }
+              gm.loadState(bytes);
+            }
+          } catch(e) {}
+          showToast('⚡ Đã tải lại tiến trình game!');
+          return true;
+        }
+      } catch(e) {
+        console.error('Load state error:', e);
+      }
+      return false;
     };
 
     window.resetGame = function() {

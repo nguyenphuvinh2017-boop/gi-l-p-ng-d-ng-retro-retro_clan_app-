@@ -9,42 +9,93 @@ class ClanNetplayService {
   WebSocket? _audioSourceSocket;
   final List<WebSocket> _audioClientSockets = [];
 
-  static const String _audioReceiverHtml = '''<!DOCTYPE html>
+  static const String _p2ScreenHtml = '''<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; user-select:none; -webkit-user-select:none; }
+    html, body { width:100%; height:100%; background:#000; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+    #canvas { width:100%; height:100%; object-fit:contain; image-rendering:pixelated; image-rendering:crisp-edges; }
+    #tapPrompt {
+      position:absolute; top:8px; left:50%; transform:translateX(-50%);
+      background:rgba(19, 28, 49, 0.94); border:1.5px solid #00E5FF; color:#00E5FF;
+      padding:6px 14px; border-radius:20px; font-size:11px; font-weight:bold;
+      font-family:system-ui, -apple-system, sans-serif; pointer-events:auto; cursor:pointer; z-index:10;
+      display:flex; align-items:center; gap:6px; box-shadow:0 4px 14px rgba(0,0,0,0.8);
+    }
+  </style>
 </head>
-<body style="background:transparent;margin:0;padding:0;">
-<script>
-  let actx = null;
-  let nextTime = 0;
-  let ws = null;
+<body>
+  <div id="tapPrompt" onclick="unlockAudio()">🔊 Bấm để mở âm thanh</div>
+  <canvas id="canvas" width="640" height="480"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    ctx.imageSmoothingEnabled = false;
+    const prompt = document.getElementById('tapPrompt');
 
-  function initAudio() {
-    try {
-      if (!actx) {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        actx = new AC({ sampleRate: 44100 });
-      }
-      if (actx && actx.state === 'suspended') {
-        actx.resume();
-      }
-    } catch(e) {}
+    let actx = null;
+    let nextAudioTime = 0;
 
-    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+    function unlockAudio() {
+      try {
+        if (!actx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          actx = new AC({ sampleRate: 44100 });
+        }
+        if (actx && actx.state === 'suspended') {
+          actx.resume();
+        }
+        if (actx && actx.state === 'running' && prompt) {
+          prompt.style.display = 'none';
+        }
+      } catch(e) {}
+    }
 
-    try {
+    window.unlockAudio = unlockAudio;
+    document.addEventListener('touchstart', unlockAudio, { passive: true });
+    document.addEventListener('pointerdown', unlockAudio, { passive: true });
+    document.addEventListener('click', unlockAudio, { passive: true });
+
+    // 1. Nhận luồng Video Full HD 640x480 và giải mã trực tiếp bằng GPU
+    function connectVideo() {
       const host = window.location.hostname || '127.0.0.1';
-      ws = new WebSocket('ws://' + host + ':8989/audio_feed');
+      const ws = new WebSocket('ws://' + host + ':8989/screen_feed_client');
+      ws.binaryType = 'blob';
+      ws.onmessage = function(e) {
+        if (window.createImageBitmap) {
+          createImageBitmap(e.data).then(bmp => {
+            ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+            bmp.close();
+          }).catch(() => {});
+        } else {
+          const img = new Image();
+          img.src = URL.createObjectURL(e.data);
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            URL.revokeObjectURL(img.src);
+          };
+        }
+      };
+      ws.onclose = () => setTimeout(connectVideo, 1000);
+    }
+    connectVideo();
+
+    // 2. Nhận luồng Âm thanh PCM 16-bit và phát mượt mà
+    function connectAudio() {
+      const host = window.location.hostname || '127.0.0.1';
+      const ws = new WebSocket('ws://' + host + ':8989/audio_feed');
       ws.binaryType = 'arraybuffer';
       ws.onmessage = function(e) {
-        if (!actx) initAudio();
+        if (!actx) unlockAudio();
         if (actx && actx.state === 'suspended') actx.resume();
+        if (!actx || actx.state !== 'running') return;
 
         const i16 = new Int16Array(e.data);
         const len = i16.length;
-        if (len === 0 || !actx) return;
+        if (len === 0) return;
 
         const f32 = new Float32Array(len);
         for (let i = 0; i < len; i++) {
@@ -59,32 +110,19 @@ class ClanNetplayService {
         src.connect(actx.destination);
 
         const now = actx.currentTime;
-        if (nextTime < now || nextTime > now + 0.25) {
-          nextTime = now + 0.02;
+        if (nextAudioTime < now || nextAudioTime > now + 0.25) {
+          nextAudioTime = now + 0.02;
         }
-        src.start(nextTime);
-        nextTime += buf.duration;
+        src.start(nextAudioTime);
+        nextAudioTime += buf.duration;
       };
-
-      ws.onclose = function() {
-        setTimeout(initAudio, 1000);
-      };
-      ws.onerror = function() {
-        try { ws.close(); } catch(_) {}
-      };
-    } catch(e) {}
-  }
-
-  window.unlockAudio = function() {
-    initAudio();
-  };
-
-  window.addEventListener('load', initAudio);
-  document.addEventListener('touchstart', initAudio, { passive: true });
-  document.addEventListener('pointerdown', initAudio, { passive: true });
-</script>
+      ws.onclose = () => setTimeout(connectAudio, 1000);
+    }
+    connectAudio();
+  </script>
 </body>
 </html>''';
+
 
   void _handleAudioFeedSource(WebSocket socket) {
     _audioSourceSocket?.close();
@@ -237,7 +275,9 @@ class ClanNetplayService {
         if (WebSocketTransformer.isUpgradeRequest(request)) {
           final path = request.uri.path;
           final socket = await WebSocketTransformer.upgrade(request);
-          if (path.contains('screen_feed')) {
+          if (path.contains('screen_feed_client')) {
+            _handleScreenFeedClient(socket);
+          } else if (path.contains('screen_feed')) {
             _handleScreenFeedSource(socket);
           } else if (path.contains('audio_feed_source')) {
             _handleAudioFeedSource(socket);
@@ -246,10 +286,10 @@ class ClanNetplayService {
           } else {
             _handleP2Connection(socket, _currentGameTitle);
           }
-        } else if (request.uri.path.contains('audio_receiver')) {
+        } else if (request.uri.path.contains('p2_screen') || request.uri.path.contains('audio_receiver')) {
           request.response.headers.contentType = ContentType.html;
           request.response.headers.add('Access-Control-Allow-Origin', '*');
-          request.response.write(_audioReceiverHtml);
+          request.response.write(_p2ScreenHtml);
           await request.response.close();
         } else if (request.uri.path.startsWith('/status') || request.uri.path.startsWith('/info')) {
           request.response.headers.contentType = ContentType.json;
@@ -314,6 +354,17 @@ class ClanNetplayService {
     }
   }
 
+  final List<WebSocket> _screenClientSockets = [];
+
+  void _handleScreenFeedClient(WebSocket socket) {
+    _screenClientSockets.add(socket);
+    socket.listen(
+      (_) {},
+      onDone: () => _screenClientSockets.remove(socket),
+      onError: (_) => _screenClientSockets.remove(socket),
+    );
+  }
+
   void _handleScreenFeedSource(WebSocket socket) {
     try {
       _screenFeedSocket?.close();
@@ -324,6 +375,13 @@ class ClanNetplayService {
         if (_p2Socket != null && _p2Socket?.readyState == WebSocket.open) {
           try {
             _p2Socket?.add(data);
+          } catch (_) {}
+        }
+        for (var client in List<WebSocket>.from(_screenClientSockets)) {
+          try {
+            if (client.readyState == WebSocket.open) {
+              client.add(data);
+            }
           } catch (_) {}
         }
       },
@@ -667,11 +725,14 @@ class ClanNetplayService {
     _audioSourceSocket = null;
 
     for (var client in List<WebSocket>.from(_audioClientSockets)) {
-      try {
-        client.close();
-      } catch (_) {}
+      try { client.close(); } catch (_) {}
     }
     _audioClientSockets.clear();
+
+    for (var client in List<WebSocket>.from(_screenClientSockets)) {
+      try { client.close(); } catch (_) {}
+    }
+    _screenClientSockets.clear();
   }
 
   /// Shutdown all servers and sockets

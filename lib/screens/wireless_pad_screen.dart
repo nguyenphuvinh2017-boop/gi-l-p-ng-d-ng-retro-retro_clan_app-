@@ -1,10 +1,11 @@
-import 'dart:ui' as ui;
+// import 'dart:ui' as ui;
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/clan_netplay_service.dart';
+import '../services/app_language.dart';
 import '../widgets/arcade_gamepad.dart';
 
 class WirelessPadScreen extends StatefulWidget {
@@ -31,9 +32,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   String _joystickType = 'dpadSquare4'; // 'dpadSquare4' (ô vuông) hoặc 'analog360'
   String _joystickSensitivity = 'normal';
   bool _isEditMode = false;
-  ui.Image? _liveGameImage;
-  bool _isDecodingFrame = false;
-  WebViewController? _audioController;
+  WebViewController? _p2DisplayController;
 
   Map<String, Offset>? _customButtonsLand;
   Map<String, Offset>? _customButtonsPort;
@@ -43,35 +42,19 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
     super.initState();
     _loadGamepadSettings();
     try {
-      _audioController = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted);
+      _p2DisplayController = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setBackgroundColor(Colors.black);
 
-      if (_audioController!.platform is AndroidWebViewController) {
-        (_audioController!.platform as AndroidWebViewController)
+      if (_p2DisplayController!.platform is AndroidWebViewController) {
+        (_p2DisplayController!.platform as AndroidWebViewController)
             .setMediaPlaybackRequiresUserGesture(false);
       }
 
-      _audioController!.loadRequest(
-        Uri.parse('http://${widget.hostIp}:${ClanNetplayService.defaultWsPort}/audio_receiver'),
+      _p2DisplayController!.loadRequest(
+        Uri.parse('http://${widget.hostIp}:${ClanNetplayService.defaultWsPort}/p2_screen'),
       );
     } catch (_) {}
-
-    widget.clanService.onScreenFrameReceived = (bytes) {
-      if (_isDecodingFrame) return; // Bỏ qua khung hình cũ nếu decoder đang bận để chống giật lag
-      _isDecodingFrame = true;
-      ui.decodeImageFromList(bytes, (ui.Image img) {
-        _isDecodingFrame = false;
-        if (!mounted) {
-          img.dispose();
-          return;
-        }
-        final oldImg = _liveGameImage;
-        setState(() {
-          _liveGameImage = img;
-        });
-        oldImg?.dispose();
-      });
-    };
 
     widget.clanService.onClientDisconnected = () {
       if (mounted) {
@@ -100,8 +83,6 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   void dispose() {
     widget.clanService.onScreenFrameReceived = null;
     widget.clanService.onClientDisconnected = null;
-    _liveGameImage?.dispose();
-    _liveGameImage = null;
     super.dispose();
   }
 
@@ -160,7 +141,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
 
   void _unlockAudioOnGesture() {
     try {
-      _audioController?.runJavaScript('window.unlockAudio();');
+      _p2DisplayController?.runJavaScript('window.unlockAudio();');
     } catch (_) {}
   }
 
@@ -185,28 +166,10 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: _liveGameImage != null
-          ? RawImage(
-              image: _liveGameImage,
-              filterQuality: FilterQuality.none,
-              fit: BoxFit.contain,
-            )
-          : Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(color: Color(0xFF00E5FF), strokeWidth: 2),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Đang đồng bộ màn hình game từ máy chủ...',
-                    style: TextStyle(color: Colors.white70, fontSize: isLandscape ? 11 : 12),
-                  ),
-                ],
-              ),
+      child: _p2DisplayController != null
+          ? WebViewWidget(controller: _p2DisplayController!)
+          : const Center(
+              child: CircularProgressIndicator(color: Color(0xFF00E5FF)),
             ),
     );
   }
@@ -234,7 +197,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Người chơi 2 - ${widget.gameTitle}',
+                    '${AppLanguage.isEnglish ? "Player 2" : "Người chơi 2"} - ${widget.gameTitle}',
                     style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   Row(
@@ -473,18 +436,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
           ),
         ),
 
-        // Audio Receiver phát âm thanh trực tiếp từ máy chủ
-        if (_audioController != null)
-          Positioned(
-            bottom: 0,
-            right: 0,
-            width: 2,
-            height: 2,
-            child: Opacity(
-              opacity: 0.01,
-              child: WebViewWidget(controller: _audioController!),
-            ),
-          ),
+        // Đã tích hợp trực tiếp vào màn hình game chính phía trên
 
         // Thanh chỉnh nút chế độ ngang
         if (_isEditMode)

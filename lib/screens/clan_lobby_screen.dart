@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/game_item.dart';
 import '../models/lan_message.dart';
 import '../services/clan_netplay_service.dart';
+import '../services/app_language.dart';
 import '../services/rom_manager.dart';
 import 'emulator_screen.dart';
 import 'wireless_pad_screen.dart';
@@ -254,9 +255,9 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
           indicatorColor: const Color(0xFFFF2A55),
           labelColor: const Color(0xFFFF2A55),
           unselectedLabelColor: Colors.white60,
-          tabs: const [
-            Tab(icon: Icon(Icons.sports_esports), text: 'TẠO PHÒNG (P1)'),
-            Tab(icon: Icon(Icons.group_add), text: 'VÀO PHÒNG (P2)'),
+          tabs: [
+            Tab(icon: const Icon(Icons.sports_esports), text: AppLanguage.tr('tab_create_room')),
+            Tab(icon: const Icon(Icons.group_add), text: AppLanguage.tr('tab_join_room')),
           ],
         ),
 
@@ -283,7 +284,7 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('1. Chọn game muốn mở phòng', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              Text(AppLanguage.tr('step_select_game'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
               IconButton(
                 icon: const Icon(Icons.refresh, color: Color(0xFF00E5FF), size: 20),
                 tooltip: 'Làm mới danh sách game',
@@ -376,7 +377,7 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
             ),
 
           const SizedBox(height: 24),
-          const Text('2. Trạng thái phòng Clan', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(AppLanguage.tr('step_room_status'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 8),
 
           Container(
@@ -402,7 +403,7 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        _isHosting ? 'ĐANG MỞ (Phát Wi-Fi)' : 'Đang đóng',
+                        _isHosting ? AppLanguage.tr('status_open') : 'Đang đóng',
                         style: TextStyle(
                           color: _isHosting ? const Color(0xFF00E5FF) : Colors.white38,
                           fontWeight: FontWeight.bold,
@@ -426,7 +427,7 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          _isPlayer2Connected ? 'Đã kết nối & Sẵn sàng' : (_isHosting ? 'Đang đợi bạn vào...' : 'Chưa kết nối'),
+                          _isPlayer2Connected ? AppLanguage.tr('player2_ready') : (_isHosting ? AppLanguage.tr('waiting_player2') : 'Chưa kết nối'),
                           style: TextStyle(
                             color: _isPlayer2Connected ? const Color(0xFF00E676) : (_isHosting ? const Color(0xFFFFD54F) : Colors.white54),
                             fontWeight: FontWeight.bold,
@@ -454,8 +455,8 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
                       icon: const Icon(Icons.sports_esports, color: Colors.white, size: 24),
                       label: Text(
                         _isPlayer2Connected
-                            ? '▶ VÀO GAME CHƠI NGAY (P1)'
-                            : '▶ VÀO GAME VỚI VAI TRÒ CHỦ PHÒNG (P1)',
+                            ? AppLanguage.tr('start_game_now')
+                            : AppLanguage.tr('start_game_host'),
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white, letterSpacing: 0.5),
                       ),
                       onPressed: _launchHostGame,
@@ -478,7 +479,7 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
                           _isPlayer2Connected = false;
                         });
                       },
-                      child: const Text('Đóng phòng'),
+                      child: Text(AppLanguage.tr('close_room_btn')),
                     ),
                   ),
                 ],
@@ -500,7 +501,7 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
                   elevation: 3,
                 ),
                 icon: const Icon(Icons.wifi_tethering, color: Colors.white),
-                label: const Text('MỞ PHÒNG CLAN (LAN)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
+                label: Text(AppLanguage.tr('open_room_btn'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
                 onPressed: _startHostRoom,
               ),
             )

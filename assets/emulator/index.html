@@ -682,13 +682,17 @@
     let offscreenCanvas = null;
     let offscreenCtx = null;
 
-    function getOffscreenCanvas() {
+    function getOffscreenCanvas(targetW, targetH) {
       if (!offscreenCanvas) {
         offscreenCanvas = document.createElement('canvas');
-        // Chuẩn Full HD Retro 640x480: 2x Integer Scale sắc nét từng pixel, tỉ lệ chuẩn 4:3
-        offscreenCanvas.width = 640;
-        offscreenCanvas.height = 480;
         offscreenCtx = offscreenCanvas.getContext('2d', { alpha: false, desynchronized: true });
+        offscreenCtx.imageSmoothingEnabled = false;
+        offscreenCtx.webkitImageSmoothingEnabled = false;
+        offscreenCtx.mozImageSmoothingEnabled = false;
+      }
+      if (offscreenCanvas.width !== targetW || offscreenCanvas.height !== targetH) {
+        offscreenCanvas.width = targetW;
+        offscreenCanvas.height = targetH;
         offscreenCtx.imageSmoothingEnabled = false;
         offscreenCtx.webkitImageSmoothingEnabled = false;
         offscreenCtx.mozImageSmoothingEnabled = false;
@@ -714,16 +718,22 @@
       }
       connectScreenWs();
 
-      function onFrameLoop() {
+      let lastCaptureTime = 0;
+
+      function onFrameLoop(now) {
         if (!p2Connected) {
           screenFeedRafId = null;
           return;
         }
         screenFeedRafId = requestAnimationFrame(onFrameLoop);
         if (!screenFeedWs || screenFeedWs.readyState !== WebSocket.OPEN) return;
-        // Kiểm soát chống giật lag mạng: Nếu socket mạng chưa truyền xong frame trước, bỏ qua frame này (Zero Buffer-Bloat)
-        if (screenFeedWs.bufferedAmount > 0) return;
+        // Kiểm soát chống nghẽn mạng Wi-Fi (cho phép buffer 64KB mượt mà không rớt frame)
+        if (screenFeedWs.bufferedAmount > 65536) return;
         if (isCapturingFrame) return;
+
+        // Giới hạn chuẩn xác 60 FPS (tránh ngốn CPU trên màn hình 90Hz/120Hz của điện thoại)
+        if (now - lastCaptureTime < 15.0) return;
+        lastCaptureTime = now;
 
         try {
           const cvs = document.querySelector('#game-container canvas') || 
@@ -732,19 +742,24 @@
           if (!cvs || cvs.width === 0 || cvs.height === 0) return;
 
           isCapturingFrame = true;
-          const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas();
-          offCtx.drawImage(cvs, 0, 0, 640, 480);
+          // Độ phân giải 2x Integer Scale sắc nét: Triệt tiêu hoàn toàn mờ nhòe Chroma Subsampling của JPEG
+          const scale = (cvs.width <= 400) ? 2 : 1;
+          const w = cvs.width * scale;
+          const h = cvs.height * scale;
+          const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas(w, h);
+          offCtx.imageSmoothingEnabled = false;
+          offCtx.drawImage(cvs, 0, 0, w, h);
           offCvs.toBlob((blob) => {
             try {
               if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
-                if (screenFeedWs.bufferedAmount === 0) {
+                if (screenFeedWs.bufferedAmount <= 65536) {
                   screenFeedWs.send(blob);
                 }
               }
             } finally {
               isCapturingFrame = false;
             }
-          }, 'image/jpeg', 0.85);
+          }, 'image/jpeg', 0.88);
         } catch(e) {
           isCapturingFrame = false;
         }

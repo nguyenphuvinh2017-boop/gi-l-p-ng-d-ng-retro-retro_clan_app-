@@ -727,12 +727,11 @@
         }
         screenFeedRafId = requestAnimationFrame(onFrameLoop);
         if (!screenFeedWs || screenFeedWs.readyState !== WebSocket.OPEN) return;
-        // Kiểm soát chống nghẽn mạng Wi-Fi (cho phép buffer 64KB mượt mà không rớt frame)
-        if (screenFeedWs.bufferedAmount > 65536) return;
+        if (screenFeedWs.bufferedAmount > 32768) return;
         if (isCapturingFrame) return;
 
-        // Giới hạn chuẩn xác 60 FPS (tránh ngốn CPU trên màn hình 90Hz/120Hz của điện thoại)
-        if (now - lastCaptureTime < 15.0) return;
+        // Giữ nhịp 60 FPS chuẩn (tránh trùng lặp trên màn hình 120Hz mà không làm rơi frame 60Hz)
+        if (now - lastCaptureTime < 10.0) return;
         lastCaptureTime = now;
 
         try {
@@ -742,24 +741,22 @@
           if (!cvs || cvs.width === 0 || cvs.height === 0) return;
 
           isCapturingFrame = true;
-          // Độ phân giải 2x Integer Scale sắc nét: Triệt tiêu hoàn toàn mờ nhòe Chroma Subsampling của JPEG
-          const scale = (cvs.width <= 400) ? 2 : 1;
-          const w = cvs.width * scale;
-          const h = cvs.height * scale;
+          // Bắt đúng độ phân giải gốc 1:1 của game: Cực nhanh (<1ms), không ngốn CPU, chất lượng 92% sắc nét
+          const w = cvs.width;
+          const h = cvs.height;
           const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas(w, h);
-          offCtx.imageSmoothingEnabled = false;
           offCtx.drawImage(cvs, 0, 0, w, h);
           offCvs.toBlob((blob) => {
             try {
               if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
-                if (screenFeedWs.bufferedAmount <= 65536) {
+                if (screenFeedWs.bufferedAmount <= 32768) {
                   screenFeedWs.send(blob);
                 }
               }
             } finally {
               isCapturingFrame = false;
             }
-          }, 'image/jpeg', 0.88);
+          }, 'image/jpeg', 0.92);
         } catch(e) {
           isCapturingFrame = false;
         }

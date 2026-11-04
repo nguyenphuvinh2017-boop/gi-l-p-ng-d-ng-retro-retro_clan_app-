@@ -6,6 +6,79 @@ import '../models/lan_message.dart';
 
 class ClanNetplayService {
   static const int defaultWsPort = 8989;
+  WebSocket? _audioSourceSocket;
+  final List<WebSocket> _audioClientSockets = [];
+
+  static const String _audioReceiverHtml = '''<!DOCTYPE html>
+<html>
+<head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="background:transparent;margin:0;padding:0;">
+<script>
+  let actx = null;
+  let nextTime = 0;
+  function initAudio() {
+    if (actx) {
+      if (actx.state === 'suspended') actx.resume();
+      return;
+    }
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      actx = new AC({ sampleRate: 44100 });
+      const host = window.location.hostname || '127.0.0.1';
+      const ws = new WebSocket('ws://' + host + ':8989/audio_feed');
+      ws.binaryType = 'arraybuffer';
+      ws.onmessage = function(e) {
+        if (!actx) return;
+        if (actx.state === 'suspended') actx.resume();
+        const f32 = new Float32Array(e.data);
+        const buf = actx.createBuffer(1, f32.length, 44100);
+        buf.getChannelData(0).set(f32);
+        const src = actx.createBufferSource();
+        src.buffer = buf;
+        src.connect(actx.destination);
+        if (nextTime < actx.currentTime) nextTime = actx.currentTime;
+        src.start(nextTime);
+        nextTime += buf.duration;
+      };
+    } catch(e) {}
+  }
+  window.unlockAudio = function() {
+    initAudio();
+    if (actx && actx.state === 'suspended') actx.resume();
+  };
+  window.addEventListener('load', initAudio);
+  document.addEventListener('touchstart', initAudio, { passive: true });
+</script>
+</body>
+</html>''';
+
+  void _handleAudioFeedSource(WebSocket socket) {
+    _audioSourceSocket?.close();
+    _audioSourceSocket = socket;
+    socket.listen(
+      (data) {
+        for (var client in List<WebSocket>.from(_audioClientSockets)) {
+          try {
+            if (client.readyState == WebSocket.open) {
+              client.add(data);
+            }
+          } catch (_) {}
+        }
+      },
+      onDone: () => _audioSourceSocket = null,
+      onError: (_) => _audioSourceSocket = null,
+    );
+  }
+
+  void _handleAudioFeedClient(WebSocket socket) {
+    _audioClientSockets.add(socket);
+    socket.listen(
+      (_) {},
+      onDone: () => _audioClientSockets.remove(socket),
+      onError: (_) => _audioClientSockets.remove(socket),
+    );
+  }
+
   static const int defaultUdpPort = 8988;
 
   HttpServer? _wsServer;
@@ -128,13 +201,22 @@ class ClanNetplayService {
 
       _wsServer!.listen((HttpRequest request) async {
         if (WebSocketTransformer.isUpgradeRequest(request)) {
-          final isScreen = request.uri.path.contains('screen_feed');
+          final path = request.uri.path;
           final socket = await WebSocketTransformer.upgrade(request);
-          if (isScreen) {
+          if (path.contains('screen_feed')) {
             _handleScreenFeedSource(socket);
+          } else if (path.contains('audio_feed_source')) {
+            _handleAudioFeedSource(socket);
+          } else if (path.contains('audio_feed')) {
+            _handleAudioFeedClient(socket);
           } else {
             _handleP2Connection(socket, _currentGameTitle);
           }
+        } else if (request.uri.path.contains('audio_receiver')) {
+          request.response.headers.contentType = ContentType.html;
+          request.response.headers.add('Access-Control-Allow-Origin', '*');
+          request.response.write(_audioReceiverHtml);
+          await request.response.close();
         } else if (request.uri.path.startsWith('/status') || request.uri.path.startsWith('/info')) {
           request.response.headers.contentType = ContentType.json;
           request.response.headers.add('Access-Control-Allow-Origin', '*');

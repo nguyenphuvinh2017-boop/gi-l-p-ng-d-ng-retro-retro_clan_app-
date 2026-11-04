@@ -667,11 +667,11 @@
     function getOffscreenCanvas() {
       if (!offscreenCanvas) {
         offscreenCanvas = document.createElement('canvas');
-        // Nâng cấp lên độ phân giải 640x480 (chuẩn HD 2x Retro) sắc nét tuyệt đối
-        offscreenCanvas.width = 640;
-        offscreenCanvas.height = 480;
+        // Độ phân giải 480x360 (1.5x Retro Integer Scale): Vừa siêu nét pixel vừa nhẹ chỉ 1.5ms encode
+        offscreenCanvas.width = 480;
+        offscreenCanvas.height = 360;
         offscreenCtx = offscreenCanvas.getContext('2d', { alpha: false });
-        // Tắt nội suy mờ để giữ nguyên hạt pixel retro sắc cạnh như máy thùng
+        // Tắt nội suy mờ để giữ nguyên hạt pixel retro sắc cạnh
         offscreenCtx.imageSmoothingEnabled = false;
         offscreenCtx.webkitImageSmoothingEnabled = false;
         offscreenCtx.mozImageSmoothingEnabled = false;
@@ -713,8 +713,8 @@
 
           isCapturingFrame = true;
           const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas();
-          // Vẽ lên canvas 640x480 chất lượng cao, giữ pixel sắc nét
-          offCtx.drawImage(cvs, 0, 0, 640, 480);
+          // Vẽ lên canvas 480x360 sắc nét, tốc độ quét 40 FPS mượt mà 100%
+          offCtx.drawImage(cvs, 0, 0, 480, 360);
           offCvs.toBlob((blob) => {
             try {
               if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
@@ -723,11 +723,11 @@
             } finally {
               isCapturingFrame = false;
             }
-          }, 'image/jpeg', 0.82);
+          }, 'image/jpeg', 0.78);
         } catch(e) {
           isCapturingFrame = false;
         }
-      }, 50);
+      }, 25);
     }
 
     function stopLiveScreenFeed() {
@@ -742,10 +742,74 @@
       isCapturingFrame = false;
     }
 
+    // Tự động bắt toàn bộ luồng âm thanh game qua Web Audio API để truyền cho P2
+    (function() {
+      const origConnect = AudioNode.prototype.connect;
+      window.__capturedAudioNodes = window.__capturedAudioNodes || [];
+      AudioNode.prototype.connect = function(dest) {
+        try {
+          if (dest instanceof AudioDestinationNode && !window.__capturedAudioNodes.includes(this)) {
+            window.__capturedAudioNodes.push(this);
+            if (window.__globalAudioStreamProcessor) {
+              try { this.connect(window.__globalAudioStreamProcessor); } catch(e) {}
+            }
+          }
+        } catch(e) {}
+        return origConnect.apply(this, arguments);
+      };
+    })();
+
+    let audioFeedWs = null;
+    let audioFeedProcessor = null;
+
+    function startLiveAudioFeed() {
+      stopLiveAudioFeed();
+      try {
+        const host = window.location.hostname || '127.0.0.1';
+        audioFeedWs = new WebSocket('ws://' + host + ':8989/audio_feed_source');
+        audioFeedWs.binaryType = 'arraybuffer';
+      } catch(e) {}
+
+      try {
+        const al = window.EJS_emulator && window.EJS_emulator.gameManager && window.EJS_emulator.gameManager.Module && window.EJS_emulator.gameManager.Module.AL;
+        const actx = (al && al.currentCtx && al.currentCtx.audioCtx) || (window.EJS_emulator && window.EJS_emulator.audioContext) || audioCtx;
+        if (!actx) return;
+
+        audioFeedProcessor = actx.createScriptProcessor(2048, 1, 1);
+        window.__globalAudioStreamProcessor = audioFeedProcessor;
+        audioFeedProcessor.onaudioprocess = function(e) {
+          if (!p2Connected || !audioFeedWs || audioFeedWs.readyState !== WebSocket.OPEN) return;
+          const chan = e.inputBuffer.getChannelData(0);
+          audioFeedWs.send(chan.buffer);
+        };
+
+        if (window.__capturedAudioNodes) {
+          window.__capturedAudioNodes.forEach(node => {
+            try { node.connect(audioFeedProcessor); } catch(e) {}
+          });
+        }
+        audioFeedProcessor.connect(actx.destination);
+      } catch(e) {}
+    }
+
+    function stopLiveAudioFeed() {
+      window.__globalAudioStreamProcessor = null;
+      if (audioFeedProcessor) {
+        try { audioFeedProcessor.disconnect(); } catch(e) {}
+        audioFeedProcessor = null;
+      }
+      if (audioFeedWs) {
+        try { audioFeedWs.close(); } catch(e) {}
+        audioFeedWs = null;
+      }
+    }
+
+
     window.setP2Status = function(connected) {
       p2Connected = connected;
       if (connected) {
         startLiveScreenFeed();
+        startLiveAudioFeed();
         // Cắm kết nối thiết bị tay cầm vào Port 1 (Player 2) trên lõi Libretro
         try {
           const emu = window.EJS_emulator;
@@ -761,6 +825,7 @@
         } catch(e) {}
       } else {
         stopLiveScreenFeed();
+        stopLiveAudioFeed();
       }
     };
 

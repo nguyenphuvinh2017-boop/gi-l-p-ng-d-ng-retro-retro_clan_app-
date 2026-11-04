@@ -383,9 +383,9 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: const Color(0xFF131C31),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: _isHosting ? const Color(0xFF00E5FF).withValues(alpha: 0.4) : Colors.white12,
+                color: _isHosting ? const Color(0xFF00E5FF).withValues(alpha: 0.5) : Colors.white12,
                 width: 1.2,
               ),
             ),
@@ -437,12 +437,74 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
                     ),
                   ],
                 ),
+
+                // NÚT VÀO GAME P1 NẰM NGAY TRUNG TÂM (KHÔNG CẦN CUỘN MÀN HÌNH)
+                if (_isHosting) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00C853),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        elevation: 4,
+                      ),
+                      icon: const Icon(Icons.sports_esports, color: Colors.white, size: 24),
+                      label: Text(
+                        _isPlayer2Connected
+                            ? '▶ VÀO GAME CHƠI NGAY (P1)'
+                            : '▶ VÀO GAME VỚI VAI TRÒ CHỦ PHÒNG (P1)',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white, letterSpacing: 0.5),
+                      ),
+                      onPressed: _launchHostGame,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: const BorderSide(color: Colors.white24),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: () async {
+                        await widget.clanService.stopAll();
+                        setState(() {
+                          _isHosting = false;
+                          _isPlayer2Connected = false;
+                        });
+                      },
+                      child: const Text('Đóng phòng'),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
 
-          const SizedBox(height: 24),
-          if (_isHosting) ...[
+          const SizedBox(height: 16),
+
+          if (!_isHosting)
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF2A55),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 3,
+                ),
+                icon: const Icon(Icons.wifi_tethering, color: Colors.white),
+                label: const Text('MỞ PHÒNG CLAN (LAN)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
+                onPressed: _startHostRoom,
+              ),
+            )
+          else ...[
             Container(
               margin: const EdgeInsets.only(bottom: 16),
               padding: const EdgeInsets.all(16),
@@ -519,60 +581,6 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
                     style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ],
-              ),
-            ),
-          ],
-
-          if (!_isHosting)          if (!_isHosting)
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF2A55),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 3,
-                ),
-                icon: const Icon(Icons.wifi_tethering, color: Colors.white),
-                label: const Text('MỞ PHÒNG CLAN (LAN)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white)),
-                onPressed: _startHostRoom,
-              ),
-            )
-          else ...[
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00C853),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  elevation: 3,
-                ),
-                icon: const Icon(Icons.sports_esports, color: Colors.white, size: 22),
-                label: const Text('VÀO GAME VỚI VAI TRÒ CHỦ PHÒNG', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white, letterSpacing: 0.5)),
-                onPressed: _launchHostGame,
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white70,
-                  side: const BorderSide(color: Colors.white24),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                onPressed: () async {
-                  await widget.clanService.stopAll();
-                  setState(() {
-                    _isHosting = false;
-                    _isPlayer2Connected = false;
-                  });
-                },
-                child: const Text('Đóng phòng'),
               ),
             ),
           ],

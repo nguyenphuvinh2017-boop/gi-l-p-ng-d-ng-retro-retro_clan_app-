@@ -706,7 +706,7 @@
       stopLiveScreenFeed();
 
       let canSend = true;
-      let ackTimeout = null;
+      let ackTimer = null;
 
       function connectScreenWs() {
         if (!p2Connected) return;
@@ -715,11 +715,10 @@
           screenFeedWs = new WebSocket('ws://' + host + ':8989/screen_feed');
           screenFeedWs.binaryType = 'arraybuffer';
           screenFeedWs.onmessage = () => {
-            // Nhận ACK từ P2: P2 đã vẽ xong frame trước, cho phép gửi frame tiếp theo
             canSend = true;
-            if (ackTimeout) {
-              clearTimeout(ackTimeout);
-              ackTimeout = null;
+            if (ackTimer) {
+              clearTimeout(ackTimer);
+              ackTimer = null;
             }
           };
           screenFeedWs.onclose = () => {
@@ -729,22 +728,16 @@
       }
       connectScreenWs();
 
-      let lastCapture = 0;
-
-      function onFrameLoop(now) {
+      // Sử dụng setInterval 33ms (30 FPS) chạy ngoài vòng lặp RAF của game:
+      // Giữ nguyên 100% 60 FPS mượt mà cho Người Chơi 1, không nghẽn CPU/GPU!
+      screenFeedInterval = setInterval(() => {
         if (!p2Connected) {
-          screenFeedRafId = null;
+          stopLiveScreenFeed();
           return;
         }
-        screenFeedRafId = requestAnimationFrame(onFrameLoop);
         if (!screenFeedWs || screenFeedWs.readyState !== WebSocket.OPEN) return;
-        // Kiểm soát chống giật chậm: Nếu P2 chưa vẽ xong frame trước, bỏ qua không đẩy vào buffer
         if (!canSend) return;
         if (isCapturingFrame) return;
-
-        // Giữ nhịp 60 FPS mượt mà
-        if (now - lastCapture < 12.0) return;
-        lastCapture = now;
 
         try {
           const cvs = document.querySelector('#game-container canvas') || 
@@ -753,7 +746,6 @@
           if (!cvs || cvs.width === 0 || cvs.height === 0) return;
 
           isCapturingFrame = true;
-          // Bắt đúng 1:1 độ phân giải gốc của game: Cực nhanh (<0.5ms), không tốn CPU
           const w = cvs.width;
           const h = cvs.height;
           const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas(w, h);
@@ -762,19 +754,17 @@
             try {
               if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
                 canSend = false;
-                // Timeout an toàn 35ms: Nếu mạng chập chờn mất gói ACK, tự mở khóa gửi tiếp
-                ackTimeout = setTimeout(() => { canSend = true; }, 35);
+                ackTimer = setTimeout(() => { canSend = true; }, 40);
                 screenFeedWs.send(blob);
               }
             } finally {
               isCapturingFrame = false;
             }
-          }, 'image/jpeg', 0.90);
+          }, 'image/jpeg', 0.85);
         } catch(e) {
           isCapturingFrame = false;
         }
-      }
-      screenFeedRafId = requestAnimationFrame(onFrameLoop);
+      }, 33);
     }
 
     function stopLiveScreenFeed() {
@@ -794,71 +784,63 @@
     }
 
     // ================= AUDIO STREAMING CHO P2 =================
-    // Tự động bắt toàn bộ luồng âm thanh game qua ScriptProcessor của Web Audio
-    function __clanSendAudio(out) {
-      if (!p2Connected || !audioFeedWs || audioFeedWs.readyState !== WebSocket.OPEN) return;
-      try {
-        if (!out || out.numberOfChannels === 0) return;
-        const chan = out.getChannelData(0);
-        const len = chan.length;
-        if (len === 0) return;
-        const i16 = new Int16Array(len);
-        for (let i = 0; i < len; i++) {
-          let s = Math.max(-1, Math.min(1, chan[i]));
-          i16[i] = s < 0 ? (s * 32768) | 0 : (s * 32767) | 0;
-        }
-        audioFeedWs.send(i16.buffer);
-      } catch(e) {}
-    }
-
-    (function() {
-      const OrigAC = window.AudioContext || window.webkitAudioContext;
-      if (OrigAC) {
-        const origCreateSP = OrigAC.prototype.createScriptProcessor;
-        OrigAC.prototype.createScriptProcessor = function(...args) {
-          const node = origCreateSP.apply(this, args);
-          let gameHandler = null;
-
-          Object.defineProperty(node, 'onaudioprocess', {
-            get: function() { return gameHandler; },
-            set: function(fn) {
-              gameHandler = fn;
-              node.__clan_origHandler = function(e) {
-                if (typeof fn === 'function') {
-                  try { fn.call(node, e); } catch(err) {}
-                }
-                __clanSendAudio(e.outputBuffer);
-              };
-              node.addEventListener('audioprocess', node.__clan_origHandler);
-            },
-            configurable: true,
-            enumerable: true
-          });
-
-          const origAddEventListener = node.addEventListener;
-          node.addEventListener = function(type, listener, ...opts) {
-            if (type === 'audioprocess' && typeof listener === 'function' && listener !== node.__clan_origHandler) {
-              const wrapped = function(e) {
-                try { listener.call(node, e); } catch(err) {}
-                __clanSendAudio(e.outputBuffer);
-              };
-              return origAddEventListener.call(node, type, wrapped, ...opts);
-            }
-            return origAddEventListener.call(node, type, listener, ...opts);
-          };
-
-          return node;
-        };
-      }
-    })();
     let audioFeedWs = null;
     let audioFeedTimer = null;
     window.__capturedAudioNodes = window.__capturedAudioNodes || [];
 
     function attachAudioTapToContext(actx) {
-      // Audio đã được bắt trực tiếp tại ScriptProcessor của AudioContext
-      return;
+      if (!actx || actx.__clanTapInstalled) return;
+      actx.__clanTapInstalled = true;
+
+      try {
+        const proc = actx.createScriptProcessor(2048, 1, 1);
+        actx.__clanAudioProcessor = proc;
+
+        proc.onaudioprocess = function(e) {
+          if (!p2Connected || !audioFeedWs || audioFeedWs.readyState !== WebSocket.OPEN) return;
+          const f32 = e.inputBuffer.getChannelData(0);
+          const len = f32.length;
+          if (len === 0) return;
+
+          // Chuyển Float32 sang Int16 PCM (nhẹ, chất lượng âm thanh 100% CD nguyên gốc)
+          const i16 = new Int16Array(len);
+          for (let i = 0; i < len; i++) {
+            let s = Math.max(-1, Math.min(1, f32[i]));
+            i16[i] = s < 0 ? (s * 32768) | 0 : (s * 32767) | 0;
+          }
+          audioFeedWs.send(i16.buffer);
+        };
+
+        proc.connect(actx.destination);
+
+        if (window.__capturedAudioNodes) {
+          const origConnect = AudioNode.prototype.connect;
+          window.__capturedAudioNodes.forEach(node => {
+            if (node.context === actx && node !== proc) {
+              try { origConnect.call(node, proc); } catch(e) {}
+            }
+          });
+        }
+      } catch(e) {}
     }
+
+    // Tự động kết nối mọi node âm thanh vào bộ truyền Clan Audio
+    (function() {
+      const origConnect = AudioNode.prototype.connect;
+      AudioNode.prototype.connect = function(dest, ...args) {
+        try {
+          if (dest && (dest instanceof AudioDestinationNode || dest === this.context.destination)) {
+            if (!window.__capturedAudioNodes.includes(this)) {
+              window.__capturedAudioNodes.push(this);
+            }
+            if (this.context && this.context.__clanAudioProcessor && this !== this.context.__clanAudioProcessor) {
+              try { origConnect.call(this, this.context.__clanAudioProcessor); } catch(e) {}
+            }
+          }
+        } catch(e) {}
+        return origConnect.apply(this, [dest, ...args]);
+      };
+    })();
 
     function startLiveAudioFeed() {
       stopLiveAudioFeed();

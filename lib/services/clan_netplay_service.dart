@@ -153,8 +153,8 @@ class ClanNetplayService {
         src.connect(actx.destination);
 
         const now = actx.currentTime;
-        if (nextAudioTime < now || nextAudioTime > now + 0.08) {
-          nextAudioTime = now + 0.015;
+        if (nextAudioTime < now || nextAudioTime > now + 0.15) {
+          nextAudioTime = now + 0.03;
         }
         src.start(nextAudioTime);
         nextAudioTime += buf.duration;

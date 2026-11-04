@@ -16,6 +16,7 @@ class ArcadeGamepad extends StatefulWidget {
   final String buttonLayout; // 'arcade6', 'arcadeSquare2x2', 'arcadeDiamond', 'arcade4Row', 'arcade4Arc'
   final String joystickType; // 'analog360', 'dpadSquare4', 'dpad4'
   final String joystickSensitivity; // 'high', 'normal', 'low'
+  final VoidCallback? onToggleJoystickType;
 
   // Chế độ chỉnh vị trí TỪNG NÚT riêng biệt
   final bool isEditMode;
@@ -35,6 +36,7 @@ class ArcadeGamepad extends StatefulWidget {
     this.buttonLayout = 'arcade6',
     this.joystickType = 'analog360',
     this.joystickSensitivity = 'normal',
+    this.onToggleJoystickType,
     this.isEditMode = false,
     this.customOffsets,
     this.onButtonOffsetsChanged,
@@ -233,6 +235,7 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
           // SELECT và X1 ở ngay trên cần gạt
           defaultPositions['SELECT'] = Offset(margin, max(0.0, H - margin - joySize - selectH - 12.0 * s));
           defaultPositions['SPEED'] = Offset(margin + selectW + gap, max(0.0, H - margin - joySize - speedSize - 10.0 * s));
+          defaultPositions['JOY_MODE'] = Offset(margin, max(0.0, defaultPositions['SELECT']!.dy - 34.0 * s));
 
           // 2. CỤM BÊN PHẢI:
           final rowW = comboW + gap + btnSize + gap + btnSize;
@@ -312,6 +315,7 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
           defaultPositions['START'] = Offset(topStartX + selectW + gap + menuSize + gap + speedSize + gap, topY);
 
           defaultPositions['JOYSTICK'] = Offset(16.0 * s, max(0.0, H - 16.0 * s - joySize));
+          defaultPositions['JOY_MODE'] = Offset(16.0 * s, max(0.0, defaultPositions['JOYSTICK']!.dy - 34.0 * s));
 
           final rowW = comboW + gap + btnSize + gap + btnSize;
           final rightBaseX = W - 16.0 * s - rowW;
@@ -354,8 +358,23 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
           }
         }
 
+        final modeW = 138.0 * s;
+        final modeH = 28.0 * s;
+
         return Stack(
           children: [
+            // 0. NÚT CHUYỂN ĐỔI NHANH GIỮA XOAY 360° & PHÍM Ô VUÔNG 4 HƯỚNG
+            if (widget.onToggleJoystickType != null)
+              _buildDraggableButton(
+                id: 'JOY_MODE',
+                width: modeW,
+                height: modeH,
+                defaultPos: defaultPositions['JOY_MODE'] ?? Offset(16.0 * s, 60),
+                W: W,
+                H: H,
+                child: _buildJoyModeSwitchBtn(s),
+              ),
+
             // 1. CẦN GẠT JOYSTICK / D-PAD (Kéo thả độc lập)
             _buildDraggableButton(
               id: 'JOYSTICK',
@@ -994,6 +1013,64 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
               size: 28 * widget.buttonScale,
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Nút chuyển nhanh giữa Cần xoay 360° & Phím 4 hướng Ô Vuông (Lên - Xuống - Trái - Phải)
+  Widget _buildJoyModeSwitchBtn(double s) {
+    String label = 'XOAY ➔ Ô VUÔNG';
+    IconData icon = Icons.grid_view_rounded;
+    Color color = const Color(0xFFFFB300);
+
+    if (widget.joystickType == 'dpadSquare4') {
+      label = 'Ô VUÔNG ➔ D-PAD';
+      icon = Icons.gamepad_rounded;
+      color = const Color(0xFF00E5FF);
+    } else if (widget.joystickType == 'dpad4') {
+      label = 'D-PAD ➔ XOAY 360°';
+      icon = Icons.radio_button_checked;
+      color = const Color(0xFF66BB6A);
+    }
+
+    return InkWell(
+      onTap: () {
+        _triggerHaptic();
+        widget.onToggleJoystickType?.call();
+      },
+      borderRadius: BorderRadius.circular(14 * s),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 8.0 * s),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: const Color(0xFF0B101D).withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(14 * s),
+          border: Border.all(color: color, width: 1.2 * s),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.35),
+              blurRadius: 6 * s,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 13 * s, color: color),
+            SizedBox(width: 4 * s),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 9.0 * s,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -369,6 +369,57 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
     }
   }
 
+  void _toggleJoystickType() {
+    setState(() {
+      if (_joystickType == 'analog360') {
+        _joystickType = 'dpadSquare4';
+      } else if (_joystickType == 'dpadSquare4') {
+        _joystickType = 'dpad4';
+      } else {
+        _joystickType = 'analog360';
+      }
+    });
+    _saveGamepadSettings();
+    if (!Platform.isWindows) {
+      try {
+        HapticFeedback.mediumImpact();
+      } catch (_) {}
+    }
+
+    String modeName = 'Phím Ô Vuông 4 hướng (Lên - Xuống - Trái - Phải)';
+    if (_joystickType == 'analog360') {
+      modeName = 'Cần gạt xoay tròn 360°';
+    } else if (_joystickType == 'dpad4') {
+      modeName = 'Cụm phím chữ thập D-Pad';
+    }
+
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF131C31),
+        duration: const Duration(milliseconds: 1400),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.only(bottom: 70, left: 20, right: 20),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: Color(0xFF00E5FF), width: 1.2),
+        ),
+        content: Row(
+          children: [
+            const Icon(Icons.swap_horiz, color: Color(0xFF00E5FF), size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Đã đổi: $modeName',
+                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _loadGamepadSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -385,7 +436,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
       setState(() {
         _buttonScale = prefs.getDouble('arcade_btn_scale') ?? 1.0;
         _buttonLayout = prefs.getString('arcade_btn_layout') ?? 'arcade6';
-        _joystickType = prefs.getString('arcade_joy_type') ?? 'analog360';
+        _joystickType = prefs.getString('arcade_joy_type') ?? 'dpadSquare4';
         _joystickSensitivity = prefs.getString('arcade_joy_sens') ?? 'normal';
 
         if (layoutVer >= 3) {
@@ -722,6 +773,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
                   onOpenMenu: _openSettingsDialog,
                   onToggleSpeed: _toggleSpeed,
                   speedMultiplier: _speedMultiplier,
+                  onToggleJoystickType: _toggleJoystickType,
                 ),
               ),
             ],
@@ -778,6 +830,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
               onOpenMenu: _openSettingsDialog,
               onToggleSpeed: _toggleSpeed,
               speedMultiplier: _speedMultiplier,
+              onToggleJoystickType: _toggleJoystickType,
               onToggleRotation: _toggleRotation,
               onExit: () {
                 if (mounted && Navigator.canPop(context)) {

@@ -127,25 +127,36 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            // Logo chữ R bóng bảy
+            // Logo RetroClan chính thức
             Container(
               width: 36,
               height: 36,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF29A3FF), Color(0xFF9C27B0), Color(0xFFFF2A55)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
                 boxShadow: [
                   BoxShadow(color: const Color(0xFF29A3FF).withValues(alpha: 0.4), blurRadius: 6),
                 ],
               ),
-              child: const Center(
-                child: Text(
-                  'R',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset(
+                  'assets/icon.png',
+                  width: 36,
+                  height: 36,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF29A3FF), Color(0xFF9C27B0), Color(0xFFFF2A55)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    child: const Center(
+                      child: Text('R', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 22)),
+                    ),
+                  ),
                 ),
               ),
             ),

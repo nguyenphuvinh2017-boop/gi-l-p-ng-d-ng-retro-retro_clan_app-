@@ -450,12 +450,53 @@
       }
     };
 
+    let turboInterval = null;
+    function updateSpeedTurbo() {
+      if (turboInterval) {
+        clearInterval(turboInterval);
+        turboInterval = null;
+      }
+      if (speedRate <= 2) return;
+
+      // Khi speedRate là 4 hoặc 8:
+      // Tự động gọi thêm hàm Module._retro_run() để tăng tốc độ game lên 4x và 8x
+      const extraSteps = speedRate === 4 ? 2 : 6;
+      turboInterval = setInterval(() => {
+        if (speedRate <= 2) {
+          clearInterval(turboInterval);
+          turboInterval = null;
+          return;
+        }
+        try {
+          const gm = window.EJS_emulator && window.EJS_emulator.gameManager;
+          const mod = (gm && gm.Module) || (window.EJS_emulator && window.EJS_emulator.Module);
+          if (mod && typeof mod._retro_run === 'function') {
+            for (let i = 0; i < extraSteps; i++) {
+              mod._retro_run();
+            }
+          }
+        } catch(e) {}
+      }, 16);
+    }
+
     window.setSpeed = function(multiplier) {
       speedRate = Number(multiplier) || 1;
       if (window.EJS_emulator) {
         try {
           const emu = window.EJS_emulator;
           const gm = emu.gameManager;
+          const ratioStr = speedRate.toFixed(1);
+
+          if (typeof emu.changeSetting === 'function') {
+            emu.changeSetting('ff-ratio', ratioStr);
+          }
+          if (emu.settings) {
+            emu.settings['ff-ratio'] = ratioStr;
+          }
+          try {
+            localStorage.setItem('ejs_ff-ratio', ratioStr);
+          } catch(e) {}
+
           // Button ID 27 là Fast Forward trong chuẩn EmulatorJS
           if (gm && typeof gm.simulateInput === 'function') {
             gm.simulateInput(0, 27, speedRate > 1 ? 1 : 0);
@@ -480,6 +521,9 @@
           }
         } catch(e) {}
       }
+
+      // Kích hoạt turbo stepper cho x4 và x8
+      updateSpeedTurbo();
 
       // Giả lập phím Space (Hotkey tua nhanh mặc định của RetroArch)
       if (isEmulatorJsMode) {

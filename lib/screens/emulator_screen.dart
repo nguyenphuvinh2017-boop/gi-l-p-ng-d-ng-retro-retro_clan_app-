@@ -418,6 +418,23 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
       _speedMultiplier = _speedMultiplier == 1 ? 2 : (_speedMultiplier == 2 ? 4 : (_speedMultiplier == 4 ? 8 : 1));
     });
     _runJs("window.setSpeed($_speedMultiplier);");
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF131C31),
+        duration: const Duration(milliseconds: 900),
+        content: Row(
+          children: [
+            const Icon(Icons.speed, color: Color(0xFF00E5FF), size: 18),
+            const SizedBox(width: 8),
+            Text(
+              'Tốc độ: ${_speedMultiplier}x ${_speedMultiplier == 1 ? "(Bình thường)" : (_speedMultiplier == 2 ? "(Tua x2)" : (_speedMultiplier == 4 ? "(Tua x4)" : "(Tua x8)"))}',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _toggleCrtFilter() async {
@@ -905,39 +922,101 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
             onPressed: _openCheatDialog,
           ),
           IconButton(
-            icon: Icon(Icons.tv, color: _isCrtFilterActive ? const Color(0xFF00FF88) : Colors.white70),
-            tooltip: 'Bộ lọc tivi CRT',
-            onPressed: _toggleCrtFilter,
-          ),
-          IconButton(
             icon: const Icon(Icons.fast_rewind, color: Color(0xFF00E5FF)),
             tooltip: 'Tua ngược 10 giây (Rewind)',
             onPressed: _triggerRewind,
           ),
           IconButton(
-            icon: Icon(Icons.smart_toy, color: _isAutoGrindActive ? const Color(0xFF00FF88) : Colors.white70),
-            tooltip: 'Tự động cày cuốc (Auto-Grind)',
-            onPressed: _toggleAutoGrind,
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white70),
-            tooltip: 'Tải lại',
-            onPressed: () => _runJs("window.location.reload();"),
-          ),
-          IconButton(
-            icon: const Icon(Icons.wifi_tethering, color: Colors.greenAccent),
+            icon: Icon(
+              Icons.wifi_tethering,
+              color: _p2Connected ? const Color(0xFF00E676) : Colors.white70,
+            ),
             tooltip: 'Phòng LAN',
             onPressed: _showClanRoomDialog,
           ),
-          IconButton(
-            icon: const Icon(Icons.screen_rotation, color: Colors.white70),
-            tooltip: 'Xoay màn hình',
-            onPressed: _toggleRotation,
-          ),
-          IconButton(
-            icon: const Icon(Icons.menu, color: Colors.white70),
-            tooltip: 'Cài đặt',
-            onPressed: _openSettingsDialog,
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            tooltip: 'Tùy chọn mở rộng',
+            color: const Color(0xFF131C31),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            onSelected: (value) {
+              switch (value) {
+                case 'crt':
+                  _toggleCrtFilter();
+                  break;
+                case 'grind':
+                  _toggleAutoGrind();
+                  break;
+                case 'rotate':
+                  _toggleRotation();
+                  break;
+                case 'reload':
+                  _runJs("window.location.reload();");
+                  break;
+                case 'settings':
+                  _openSettingsDialog();
+                  break;
+              }
+            },
+            itemBuilder: (ctx) => [
+              PopupMenuItem(
+                value: 'crt',
+                child: Row(
+                  children: [
+                    Icon(Icons.tv, color: _isCrtFilterActive ? const Color(0xFF00FF88) : Colors.white70, size: 20),
+                    const SizedBox(width: 10),
+                    Text(
+                      _isCrtFilterActive ? 'Bộ lọc CRT (Đang bật)' : 'Bộ lọc CRT (Đang tắt)',
+                      style: TextStyle(color: _isCrtFilterActive ? const Color(0xFF00FF88) : Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'grind',
+                child: Row(
+                  children: [
+                    Icon(Icons.smart_toy, color: _isAutoGrindActive ? const Color(0xFF00FF88) : Colors.white70, size: 20),
+                    const SizedBox(width: 10),
+                    Text(
+                      _isAutoGrindActive ? 'Auto-Grind (Đang cày)' : 'Auto-Grind (Tự động cày)',
+                      style: TextStyle(color: _isAutoGrindActive ? const Color(0xFF00FF88) : Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'rotate',
+                child: const Row(
+                  children: [
+                    Icon(Icons.screen_rotation, color: Colors.white70, size: 20),
+                    SizedBox(width: 10),
+                    Text('Xoay ngang / dọc', style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'reload',
+                child: const Row(
+                  children: [
+                    Icon(Icons.refresh, color: Colors.white70, size: 20),
+                    SizedBox(width: 10),
+                    Text('Tải lại game', style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(height: 1),
+              PopupMenuItem(
+                value: 'settings',
+                child: const Row(
+                  children: [
+                    Icon(Icons.tune, color: Color(0xFF00E5FF), size: 20),
+                    SizedBox(width: 10),
+                    Text('Cài đặt nút & Cần gạt', style: TextStyle(color: Color(0xFF00E5FF), fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),

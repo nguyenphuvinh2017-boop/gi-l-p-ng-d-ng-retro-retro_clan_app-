@@ -705,45 +705,23 @@
     function startLiveScreenFeed() {
       stopLiveScreenFeed();
 
-      let canSend = true;
-      let ackTimer = null;
+      let lastFrameSentTime = 0;
+      let minIntervalTimer = null;
+      let watchdogTimer = null;
 
-      function connectScreenWs() {
+      function sendNextFrame() {
         if (!p2Connected) return;
-        try {
-          const host = window.location.hostname || '127.0.0.1';
-          screenFeedWs = new WebSocket('ws://' + host + ':8989/screen_feed');
-          screenFeedWs.binaryType = 'arraybuffer';
-          screenFeedWs.onmessage = () => {
-            canSend = true;
-            if (ackTimer) {
-              clearTimeout(ackTimer);
-              ackTimer = null;
-            }
-          };
-          screenFeedWs.onclose = () => {
-            if (p2Connected) setTimeout(connectScreenWs, 1000);
-          };
-        } catch(e) {}
-      }
-      connectScreenWs();
-
-      // Sử dụng setInterval 33ms (30 FPS) chạy ngoài vòng lặp RAF của game:
-      // Giữ nguyên 100% 60 FPS mượt mà cho Người Chơi 1, không nghẽn CPU/GPU!
-      screenFeedInterval = setInterval(() => {
-        if (!p2Connected) {
-          stopLiveScreenFeed();
-          return;
-        }
         if (!screenFeedWs || screenFeedWs.readyState !== WebSocket.OPEN) return;
-        if (!canSend) return;
         if (isCapturingFrame) return;
 
         try {
           const cvs = document.querySelector('#game-container canvas') || 
                       document.getElementById('nes-canvas') || 
                       document.querySelector('canvas');
-          if (!cvs || cvs.width === 0 || cvs.height === 0) return;
+          if (!cvs || cvs.width === 0 || cvs.height === 0) {
+            setTimeout(sendNextFrame, 20);
+            return;
+          }
 
           isCapturingFrame = true;
           const w = cvs.width;
@@ -753,8 +731,7 @@
           offCvs.toBlob((blob) => {
             try {
               if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
-                canSend = false;
-                ackTimer = setTimeout(() => { canSend = true; }, 40);
+                lastFrameSentTime = performance.now();
                 screenFeedWs.send(blob);
               }
             } finally {
@@ -764,13 +741,60 @@
         } catch(e) {
           isCapturingFrame = false;
         }
-      }, 33);
+      }
+
+      function onAckReceived() {
+        const now = performance.now();
+        const elapsed = now - lastFrameSentTime;
+        // Pacing mượt mà ~50 FPS (khoảng cách tối thiểu 20ms giữa 2 frame):
+        // P2 nhận đều đặn không giật cục, P1 không bị tốn CPU
+        if (elapsed >= 20) {
+          sendNextFrame();
+        } else {
+          const waitTime = Math.max(1, Math.round(20 - elapsed));
+          if (minIntervalTimer) clearTimeout(minIntervalTimer);
+          minIntervalTimer = setTimeout(() => {
+            sendNextFrame();
+          }, waitTime);
+        }
+      }
+
+      function connectScreenWs() {
+        if (!p2Connected) return;
+        try {
+          const host = window.location.hostname || '127.0.0.1';
+          screenFeedWs = new WebSocket('ws://' + host + ':8989/screen_feed');
+          screenFeedWs.binaryType = 'arraybuffer';
+          screenFeedWs.onopen = () => {
+            // Gửi frame đầu tiên để khởi động luồng truyền
+            setTimeout(sendNextFrame, 100);
+          };
+          screenFeedWs.onmessage = () => {
+            onAckReceived();
+          };
+          screenFeedWs.onclose = () => {
+            if (p2Connected) setTimeout(connectScreenWs, 1000);
+          };
+        } catch(e) {}
+      }
+      connectScreenWs();
+
+      // Watchdog an toàn: Nếu mạng Wi-Fi bị rớt gói ACK khiến luồng bị dừng, tự kích hoạt gửi tiếp
+      watchdogTimer = setInterval(() => {
+        if (p2Connected && (performance.now() - lastFrameSentTime > 60)) {
+          sendNextFrame();
+        }
+      }, 50);
+
+      window.__clanStopWatchdog = () => {
+        if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
+        if (minIntervalTimer) { clearTimeout(minIntervalTimer); minIntervalTimer = null; }
+      };
     }
 
     function stopLiveScreenFeed() {
-      if (screenFeedRafId) {
-        cancelAnimationFrame(screenFeedRafId);
-        screenFeedRafId = null;
+      if (window.__clanStopWatchdog) {
+        window.__clanStopWatchdog();
       }
       if (screenFeedInterval) {
         clearInterval(screenFeedInterval);

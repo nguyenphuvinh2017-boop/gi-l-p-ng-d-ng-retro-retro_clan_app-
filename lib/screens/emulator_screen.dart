@@ -90,6 +90,9 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (widget.isHost) {
+      widget.clanService.notifyHostExited();
+    }
     _localServer?.close(force: true);
     _proxyHttpClient?.close(force: true);
     _autoGrindTimer?.cancel();
@@ -345,6 +348,11 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
                 setState(() {
                   _isEngineReady = true;
                 });
+                if (widget.isHost && widget.clanService.isP2Connected) {
+                  Future.delayed(const Duration(milliseconds: 1000), () {
+                    _runJs("window.setP2Status(true);");
+                  });
+                }
               }
             },
           ),
@@ -396,6 +404,13 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
         }
         _runJs("window.setP2Status($connected);");
       };
+
+      if (widget.clanService.isP2Connected) {
+        _p2Connected = true;
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          _runJs("window.setP2Status(true);");
+        });
+      }
     }
   }
 
@@ -866,10 +881,15 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
-    if (_isLandscape) {
-      return _buildLandscapeLayout();
-    }
-    return _buildPortraitLayout();
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (widget.isHost) {
+          widget.clanService.notifyHostExited();
+        }
+      },
+      child: _isLandscape ? _buildLandscapeLayout() : _buildPortraitLayout(),
+    );
   }
 
   /// Giao diện Dọc (Portrait)
@@ -883,6 +903,9 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           tooltip: 'Quay lại',
           onPressed: () {
+            if (widget.isHost) {
+              widget.clanService.notifyHostExited();
+            }
             if (mounted && Navigator.canPop(context)) {
               Navigator.pop(context);
             }
@@ -1143,6 +1166,9 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
               onToggleJoystickType: _toggleJoystickType,
               onToggleRotation: _toggleRotation,
               onExit: () {
+                if (widget.isHost) {
+                  widget.clanService.notifyHostExited();
+                }
                 if (mounted && Navigator.canPop(context)) {
                   Navigator.pop(context);
                 }

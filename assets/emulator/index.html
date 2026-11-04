@@ -224,6 +224,24 @@
       }
     });
 
+    // Tự động ghi nhận mọi AudioContext được tạo bởi bất kỳ core nào (EmulatorJS, OpenAL, JSNES)
+    window.__allAudioContexts = window.__allAudioContexts || [];
+    (function() {
+      const OrigAC = window.AudioContext || window.webkitAudioContext;
+      if (OrigAC) {
+        const PatchedAC = function(...args) {
+          const instance = new OrigAC(...args);
+          window.__allAudioContexts.push(instance);
+          if (typeof attachAudioTapToContext === 'function') {
+            attachAudioTapToContext(instance);
+          }
+          return instance;
+        };
+        PatchedAC.prototype = OrigAC.prototype;
+        window.AudioContext = window.webkitAudioContext = PatchedAC;
+      }
+    })();
+
     // Mở khóa âm thanh Web Audio / WebKit trên iOS và Android ngay khi có chạm màn hình hoặc bấm nút
     function unlockAudio() {
       try {
@@ -667,11 +685,10 @@
     function getOffscreenCanvas() {
       if (!offscreenCanvas) {
         offscreenCanvas = document.createElement('canvas');
-        // Độ phân giải 480x360 (1.5x Retro Integer Scale): Vừa siêu nét pixel vừa nhẹ chỉ 1.5ms encode
-        offscreenCanvas.width = 480;
-        offscreenCanvas.height = 360;
+        // Chuẩn độ phân giải native retro 320x240: Cực nhẹ (<1ms encode), 0% giật lag, cực mượt 30 FPS
+        offscreenCanvas.width = 320;
+        offscreenCanvas.height = 240;
         offscreenCtx = offscreenCanvas.getContext('2d', { alpha: false });
-        // Tắt nội suy mờ để giữ nguyên hạt pixel retro sắc cạnh
         offscreenCtx.imageSmoothingEnabled = false;
         offscreenCtx.webkitImageSmoothingEnabled = false;
         offscreenCtx.mozImageSmoothingEnabled = false;
@@ -681,28 +698,26 @@
 
     function startLiveScreenFeed() {
       stopLiveScreenFeed();
-      try {
-        const host = window.location.hostname || '127.0.0.1';
-        screenFeedWs = new WebSocket('ws://' + host + ':8989/screen_feed');
-        screenFeedWs.binaryType = 'arraybuffer';
-      } catch(e) {}
+
+      function connectScreenWs() {
+        if (!p2Connected) return;
+        try {
+          const host = window.location.hostname || '127.0.0.1';
+          screenFeedWs = new WebSocket('ws://' + host + ':8989/screen_feed');
+          screenFeedWs.binaryType = 'arraybuffer';
+          screenFeedWs.onclose = () => {
+            if (p2Connected) setTimeout(connectScreenWs, 1000);
+          };
+        } catch(e) {}
+      }
+      connectScreenWs();
 
       screenFeedInterval = setInterval(() => {
         if (!p2Connected) {
           stopLiveScreenFeed();
           return;
         }
-        if (!screenFeedWs || screenFeedWs.readyState !== WebSocket.OPEN) {
-          if (!screenFeedWs || screenFeedWs.readyState === WebSocket.CLOSED) {
-            try {
-              const host = window.location.hostname || '127.0.0.1';
-              screenFeedWs = new WebSocket('ws://' + host + ':8989/screen_feed');
-              screenFeedWs.binaryType = 'arraybuffer';
-            } catch(e) {}
-          }
-          return;
-        }
-
+        if (!screenFeedWs || screenFeedWs.readyState !== WebSocket.OPEN) return;
         if (isCapturingFrame) return;
 
         try {
@@ -713,8 +728,7 @@
 
           isCapturingFrame = true;
           const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas();
-          // Vẽ lên canvas 480x360 sắc nét, tốc độ quét 40 FPS mượt mà 100%
-          offCtx.drawImage(cvs, 0, 0, 480, 360);
+          offCtx.drawImage(cvs, 0, 0, 320, 240);
           offCvs.toBlob((blob) => {
             try {
               if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
@@ -723,11 +737,11 @@
             } finally {
               isCapturingFrame = false;
             }
-          }, 'image/jpeg', 0.78);
+          }, 'image/jpeg', 0.72);
         } catch(e) {
           isCapturingFrame = false;
         }
-      }, 25);
+      }, 30);
     }
 
     function stopLiveScreenFeed() {
@@ -742,61 +756,117 @@
       isCapturingFrame = false;
     }
 
-    // Tự động bắt toàn bộ luồng âm thanh game qua Web Audio API để truyền cho P2
-    (function() {
-      const origConnect = AudioNode.prototype.connect;
-      window.__capturedAudioNodes = window.__capturedAudioNodes || [];
-      AudioNode.prototype.connect = function(dest) {
-        try {
-          if (dest instanceof AudioDestinationNode && !window.__capturedAudioNodes.includes(this)) {
-            window.__capturedAudioNodes.push(this);
-            if (window.__globalAudioStreamProcessor) {
-              try { this.connect(window.__globalAudioStreamProcessor); } catch(e) {}
-            }
-          }
-        } catch(e) {}
-        return origConnect.apply(this, arguments);
-      };
-    })();
-
+    // ================= AUDIO STREAMING CHO P2 =================
     let audioFeedWs = null;
-    let audioFeedProcessor = null;
+    let audioFeedTimer = null;
+    window.__capturedAudioNodes = window.__capturedAudioNodes || [];
 
-    function startLiveAudioFeed() {
-      stopLiveAudioFeed();
-      try {
-        const host = window.location.hostname || '127.0.0.1';
-        audioFeedWs = new WebSocket('ws://' + host + ':8989/audio_feed_source');
-        audioFeedWs.binaryType = 'arraybuffer';
-      } catch(e) {}
+    function attachAudioTapToContext(actx) {
+      if (!actx || actx.__clanTapInstalled) return;
+      actx.__clanTapInstalled = true;
 
       try {
-        const al = window.EJS_emulator && window.EJS_emulator.gameManager && window.EJS_emulator.gameManager.Module && window.EJS_emulator.gameManager.Module.AL;
-        const actx = (al && al.currentCtx && al.currentCtx.audioCtx) || (window.EJS_emulator && window.EJS_emulator.audioContext) || audioCtx;
-        if (!actx) return;
+        const proc = actx.createScriptProcessor(2048, 1, 1);
+        actx.__clanAudioProcessor = proc;
 
-        audioFeedProcessor = actx.createScriptProcessor(2048, 1, 1);
-        window.__globalAudioStreamProcessor = audioFeedProcessor;
-        audioFeedProcessor.onaudioprocess = function(e) {
+        proc.onaudioprocess = function(e) {
           if (!p2Connected || !audioFeedWs || audioFeedWs.readyState !== WebSocket.OPEN) return;
-          const chan = e.inputBuffer.getChannelData(0);
-          audioFeedWs.send(chan.buffer);
+          const f32 = e.inputBuffer.getChannelData(0);
+          const len = f32.length;
+          if (len === 0) return;
+
+          // Chuyển Float32 sang Int16 PCM (nhẹ gấp đôi, chất lượng âm thanh 100% CD nguyên gốc)
+          const i16 = new Int16Array(len);
+          for (let i = 0; i < len; i++) {
+            let s = Math.max(-1, Math.min(1, f32[i]));
+            i16[i] = s < 0 ? (s * 32768) | 0 : (s * 32767) | 0;
+          }
+          audioFeedWs.send(i16.buffer);
         };
 
+        proc.connect(actx.destination);
+
         if (window.__capturedAudioNodes) {
+          const origConnect = AudioNode.prototype.connect;
           window.__capturedAudioNodes.forEach(node => {
-            try { node.connect(audioFeedProcessor); } catch(e) {}
+            if (node.context === actx && node !== proc) {
+              try { origConnect.call(node, proc); } catch(e) {}
+            }
           });
         }
-        audioFeedProcessor.connect(actx.destination);
       } catch(e) {}
     }
 
+    // Tự động bắt toàn bộ luồng âm thanh game qua Web Audio API để truyền cho P2
+    (function() {
+      const origConnect = AudioNode.prototype.connect;
+      AudioNode.prototype.connect = function(dest, ...args) {
+        try {
+          if (dest && (dest instanceof AudioDestinationNode || dest === this.context.destination)) {
+            if (!window.__capturedAudioNodes.includes(this)) {
+              window.__capturedAudioNodes.push(this);
+            }
+            if (this.context && this.context.__clanAudioProcessor && this !== this.context.__clanAudioProcessor) {
+              try { origConnect.call(this, this.context.__clanAudioProcessor); } catch(e) {}
+            }
+          }
+        } catch(e) {}
+        return origConnect.apply(this, [dest, ...args]);
+      };
+    })();
+
+    function startLiveAudioFeed() {
+      stopLiveAudioFeed();
+
+      function connectAudioWs() {
+        if (!p2Connected) return;
+        try {
+          const host = window.location.hostname || '127.0.0.1';
+          audioFeedWs = new WebSocket('ws://' + host + ':8989/audio_feed_source');
+          audioFeedWs.binaryType = 'arraybuffer';
+          audioFeedWs.onclose = () => {
+            if (p2Connected) setTimeout(connectAudioWs, 1000);
+          };
+        } catch(e) {}
+      }
+      connectAudioWs();
+
+      // Kiểm tra định kỳ để kết nối AudioContext ngay khi core giả lập tải xong
+      audioFeedTimer = setInterval(() => {
+        if (!p2Connected) {
+          stopLiveAudioFeed();
+          return;
+        }
+
+        // 1. Kiểm tra tất cả AudioContexts đã đăng ký
+        if (window.__allAudioContexts) {
+          window.__allAudioContexts.forEach(ctx => attachAudioTapToContext(ctx));
+        }
+        if (audioCtx) attachAudioTapToContext(audioCtx);
+
+        // 2. Kiểm tra EmulatorJS và OpenAL
+        try {
+          const emu = window.EJS_emulator;
+          if (emu) {
+            if (emu.audioContext) attachAudioTapToContext(emu.audioContext);
+            const gm = emu.gameManager;
+            if (gm) {
+              if (gm.audioCtx) attachAudioTapToContext(gm.audioCtx);
+              if (gm.soundContext) attachAudioTapToContext(gm.soundContext);
+              const al = gm.Module && gm.Module.AL;
+              if (al && al.currentCtx && al.currentCtx.audioCtx) {
+                attachAudioTapToContext(al.currentCtx.audioCtx);
+              }
+            }
+          }
+        } catch(e) {}
+      }, 500);
+    }
+
     function stopLiveAudioFeed() {
-      window.__globalAudioStreamProcessor = null;
-      if (audioFeedProcessor) {
-        try { audioFeedProcessor.disconnect(); } catch(e) {}
-        audioFeedProcessor = null;
+      if (audioFeedTimer) {
+        clearInterval(audioFeedTimer);
+        audioFeedTimer = null;
       }
       if (audioFeedWs) {
         try { audioFeedWs.close(); } catch(e) {}

@@ -11,43 +11,77 @@ class ClanNetplayService {
 
   static const String _audioReceiverHtml = '''<!DOCTYPE html>
 <html>
-<head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
 <body style="background:transparent;margin:0;padding:0;">
 <script>
   let actx = null;
   let nextTime = 0;
+  let ws = null;
+
   function initAudio() {
-    if (actx) {
-      if (actx.state === 'suspended') actx.resume();
-      return;
-    }
     try {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      actx = new AC({ sampleRate: 44100 });
+      if (!actx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        actx = new AC({ sampleRate: 44100 });
+      }
+      if (actx && actx.state === 'suspended') {
+        actx.resume();
+      }
+    } catch(e) {}
+
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+
+    try {
       const host = window.location.hostname || '127.0.0.1';
-      const ws = new WebSocket('ws://' + host + ':8989/audio_feed');
+      ws = new WebSocket('ws://' + host + ':8989/audio_feed');
       ws.binaryType = 'arraybuffer';
       ws.onmessage = function(e) {
-        if (!actx) return;
-        if (actx.state === 'suspended') actx.resume();
-        const f32 = new Float32Array(e.data);
-        const buf = actx.createBuffer(1, f32.length, 44100);
+        if (!actx) initAudio();
+        if (actx && actx.state === 'suspended') actx.resume();
+
+        const i16 = new Int16Array(e.data);
+        const len = i16.length;
+        if (len === 0 || !actx) return;
+
+        const f32 = new Float32Array(len);
+        for (let i = 0; i < len; i++) {
+          f32[i] = i16[i] / (i16[i] < 0 ? 32768 : 32767);
+        }
+
+        const buf = actx.createBuffer(1, len, actx.sampleRate || 44100);
         buf.getChannelData(0).set(f32);
+
         const src = actx.createBufferSource();
         src.buffer = buf;
         src.connect(actx.destination);
-        if (nextTime < actx.currentTime) nextTime = actx.currentTime;
+
+        const now = actx.currentTime;
+        if (nextTime < now || nextTime > now + 0.25) {
+          nextTime = now + 0.02;
+        }
         src.start(nextTime);
         nextTime += buf.duration;
       };
+
+      ws.onclose = function() {
+        setTimeout(initAudio, 1000);
+      };
+      ws.onerror = function() {
+        try { ws.close(); } catch(_) {}
+      };
     } catch(e) {}
   }
+
   window.unlockAudio = function() {
     initAudio();
-    if (actx && actx.state === 'suspended') actx.resume();
   };
+
   window.addEventListener('load', initAudio);
   document.addEventListener('touchstart', initAudio, { passive: true });
+  document.addEventListener('pointerdown', initAudio, { passive: true });
 </script>
 </body>
 </html>''';
@@ -558,18 +592,24 @@ class ClanNetplayService {
             onScreenFrameReceived?.call(Uint8List.fromList(data));
           } else {
             final msg = LanMessage.deserialize(data.toString());
-            if (msg != null && msg.type == LanMessageType.joined) {
-              final title = msg.payload['gameTitle'] as String? ?? 'Game';
-              onJoined(title);
+            if (msg != null) {
+              if (msg.type == LanMessageType.joined) {
+                final title = msg.payload['gameTitle'] as String? ?? 'Game';
+                onJoined(title);
+              } else if (msg.type == LanMessageType.disconnect || msg.payload['status'] == 'host_exited') {
+                onClientDisconnected?.call();
+              }
             }
           }
         },
         onDone: () {
           _clientSocket = null;
+          onClientDisconnected?.call();
         },
         onError: (err) {
           print('Client socket error: $err');
           _clientSocket = null;
+          onClientDisconnected?.call();
         },
       );
 
@@ -597,14 +637,24 @@ class ClanNetplayService {
     }
   }
 
-  /// Shutdown all servers and sockets
-  Future<void> stopAll() async {
-    _beaconTimer?.cancel();
-    _beaconTimer = null;
-    _cleanupTimer?.cancel();
-    _cleanupTimer = null;
-    _subnetScanTimer?.cancel();
-    _subnetScanTimer = null;
+  /// Thông báo cho P2 rằng Host đã thoát và ngắt các luồng stream
+  Future<void> notifyHostExited() async {
+    if (_p2Socket != null && _p2Socket?.readyState == WebSocket.open) {
+      try {
+        final exitMsg = LanMessage(
+          type: LanMessageType.disconnect,
+          payload: {
+            'player': 1,
+            'status': 'host_exited',
+            'message': 'Chủ phòng đã thoát game.',
+          },
+        ).serialize();
+        _p2Socket?.add(exitMsg);
+        await Future.delayed(const Duration(milliseconds: 80));
+        await _p2Socket?.close();
+      } catch (_) {}
+      _p2Socket = null;
+    }
 
     try {
       await _screenFeedSocket?.close();
@@ -612,9 +662,28 @@ class ClanNetplayService {
     _screenFeedSocket = null;
 
     try {
-      await _p2Socket?.close();
+      await _audioSourceSocket?.close();
     } catch (_) {}
-    _p2Socket = null;
+    _audioSourceSocket = null;
+
+    for (var client in List<WebSocket>.from(_audioClientSockets)) {
+      try {
+        client.close();
+      } catch (_) {}
+    }
+    _audioClientSockets.clear();
+  }
+
+  /// Shutdown all servers and sockets
+  Future<void> stopAll() async {
+    await notifyHostExited();
+
+    _beaconTimer?.cancel();
+    _beaconTimer = null;
+    _cleanupTimer?.cancel();
+    _cleanupTimer = null;
+    _subnetScanTimer?.cancel();
+    _subnetScanTimer = null;
 
     try {
       await _clientSocket?.close();

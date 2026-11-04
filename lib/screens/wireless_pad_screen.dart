@@ -1,7 +1,8 @@
+import 'dart:ui' as ui;
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/clan_netplay_service.dart';
 import '../widgets/arcade_gamepad.dart';
@@ -30,9 +31,8 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   String _joystickType = 'dpadSquare4'; // 'dpadSquare4' (ô vuông) hoặc 'analog360'
   String _joystickSensitivity = 'normal';
   bool _isEditMode = false;
-  bool _isP2BarMinimized = false;
-  Offset _p2BarOffset = const Offset(12, 8);
-  final ValueNotifier<Uint8List?> _screenFrameNotifier = ValueNotifier<Uint8List?>(null);
+  ui.Image? _liveGameImage;
+  bool _isDecodingFrame = false;
   WebViewController? _audioController;
 
   Map<String, Offset>? _customButtonsLand;
@@ -44,12 +44,33 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
     _loadGamepadSettings();
     try {
       _audioController = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..loadRequest(Uri.parse('http://${widget.hostIp}:${ClanNetplayService.defaultWsPort}/audio_receiver'));
+        ..setJavaScriptMode(JavaScriptMode.unrestricted);
+
+      if (_audioController!.platform is AndroidWebViewController) {
+        (_audioController!.platform as AndroidWebViewController)
+            .setMediaPlaybackRequiresUserGesture(false);
+      }
+
+      _audioController!.loadRequest(
+        Uri.parse('http://${widget.hostIp}:${ClanNetplayService.defaultWsPort}/audio_receiver'),
+      );
     } catch (_) {}
 
     widget.clanService.onScreenFrameReceived = (bytes) {
-      _screenFrameNotifier.value = bytes;
+      if (_isDecodingFrame) return; // Bỏ qua khung hình cũ nếu decoder đang bận để chống giật lag
+      _isDecodingFrame = true;
+      ui.decodeImageFromList(bytes, (ui.Image img) {
+        _isDecodingFrame = false;
+        if (!mounted) {
+          img.dispose();
+          return;
+        }
+        final oldImg = _liveGameImage;
+        setState(() {
+          _liveGameImage = img;
+        });
+        oldImg?.dispose();
+      });
     };
 
     widget.clanService.onClientDisconnected = () {
@@ -57,18 +78,20 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            backgroundColor: Colors.orangeAccent,
-            duration: Duration(seconds: 4),
+            backgroundColor: Color(0xFFFF2A55),
+            duration: Duration(seconds: 3),
             content: Row(
               children: [
-                Icon(Icons.link_off, color: Colors.white),
+                Icon(Icons.exit_to_app, color: Colors.white),
                 SizedBox(width: 8),
-                Text('Chủ phòng đã thoát hoặc ngắt kết nối mạng LAN.', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('Chủ phòng đã thoát game. Đang quay lại sảnh Clan...', style: TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
           ),
         );
-        Navigator.pop(context);
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context);
+        }
       }
     };
   }
@@ -77,7 +100,8 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   void dispose() {
     widget.clanService.onScreenFrameReceived = null;
     widget.clanService.onClientDisconnected = null;
-    _screenFrameNotifier.dispose();
+    _liveGameImage?.dispose();
+    _liveGameImage = null;
     super.dispose();
   }
 
@@ -145,78 +169,45 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
     widget.clanService.sendClientInput(button, isDown);
   }
 
-  void _quickPulseButton(String button) {
-    HapticFeedback.heavyImpact();
-    widget.clanService.sendClientInput(button, true);
-    Future.delayed(const Duration(milliseconds: 250), () {
-      widget.clanService.sendClientInput(button, false);
-    });
-  }
-
-  void _triggerStartP2() {
-    HapticFeedback.heavyImpact();
-    // Nạp xu trước (SELECT), sau đó kích hoạt START P2 để chắc chắn 100% xuất hiện nhân vật
-    widget.clanService.sendClientInput('SELECT', true);
-    Future.delayed(const Duration(milliseconds: 120), () {
-      widget.clanService.sendClientInput('SELECT', false);
-      Future.delayed(const Duration(milliseconds: 80), () {
-        widget.clanService.sendClientInput('START', true);
-        Future.delayed(const Duration(milliseconds: 300), () {
-          widget.clanService.sendClientInput('START', false);
-        });
-      });
-    });
-    // Tự động thu nhỏ thanh sau khi bấm Start P2 để không che game
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) setState(() => _isP2BarMinimized = true);
-    });
-  }
-
   Widget _buildLiveGameScreen({required double? height, required bool isLandscape}) {
-    return ValueListenableBuilder<Uint8List?>(
-      valueListenable: _screenFrameNotifier,
-      builder: (context, frameBytes, _) {
-        return Container(
-          height: height,
-          margin: EdgeInsets.symmetric(
-            horizontal: isLandscape ? 0 : 14,
-            vertical: isLandscape ? 6 : 2,
-          ),
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(isLandscape ? 10 : 12),
-            border: Border.all(color: const Color(0xFFD4AF37), width: 1.5),
-            boxShadow: const [
-              BoxShadow(color: Colors.black87, blurRadius: 8, offset: Offset(0, 2)),
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: frameBytes != null
-              ? Image.memory(
-                  frameBytes,
-                  gaplessPlayback: true,
-                  filterQuality: FilterQuality.none,
-                  fit: BoxFit.contain,
-                )
-              : Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(color: Color(0xFF00E5FF), strokeWidth: 2),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Đang đồng bộ màn hình game từ máy chủ...',
-                        style: TextStyle(color: Colors.white70, fontSize: isLandscape ? 11 : 12),
-                      ),
-                    ],
+    return Container(
+      height: height,
+      margin: EdgeInsets.symmetric(
+        horizontal: isLandscape ? 0 : 14,
+        vertical: isLandscape ? 4 : 2,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(isLandscape ? 6 : 12),
+        border: Border.all(color: const Color(0xFFD4AF37), width: 1.5),
+        boxShadow: const [
+          BoxShadow(color: Colors.black87, blurRadius: 8, offset: Offset(0, 2)),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: _liveGameImage != null
+          ? RawImage(
+              image: _liveGameImage,
+              filterQuality: FilterQuality.none,
+              fit: BoxFit.contain,
+            )
+          : Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(color: Color(0xFF00E5FF), strokeWidth: 2),
                   ),
-                ),
-        );
-      },
+                  const SizedBox(height: 8),
+                  Text(
+                    'Đang đồng bộ màn hình game từ máy chủ...',
+                    style: TextStyle(color: Colors.white70, fontSize: isLandscape ? 11 : 12),
+                  ),
+                ],
+              ),
+            ),
     );
   }
 
@@ -340,57 +331,65 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
                 ],
               ),
               const SizedBox(height: 10),
-              // Nút thao tác nhanh Nạp xu & Bắt đầu Player 2
+              // Nút chuyển chế độ cần gạt và chỉnh nút
               Row(
                 children: [
                   Expanded(
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFE5A800),
-                        foregroundColor: Colors.black87,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    child: InkWell(
+                      onTap: _toggleJoystickType,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white10,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _joystickType == 'dpadSquare4' ? Icons.grid_view : Icons.track_changes,
+                              color: const Color(0xFF00E5FF),
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              _joystickType == 'dpadSquare4' ? 'Cần gạt: Ô vuông' : 'Cần gạt: 360°',
+                              style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 12, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
                       ),
-                      icon: const Icon(Icons.monetization_on, size: 16),
-                      label: const Text('NẠP XU (COIN)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
-                      onPressed: () => _quickPulseButton('SELECT'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00C853),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      icon: const Icon(Icons.play_arrow, size: 16),
-                      label: const Text('VÀO GAME (P2)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
-                      onPressed: () => _quickPulseButton('START'),
                     ),
                   ),
                   const SizedBox(width: 8),
                   InkWell(
-                    onTap: _toggleJoystickType,
+                    onTap: () {
+                      setState(() => _isEditMode = !_isEditMode);
+                      if (!_isEditMode) _saveGamepadSettings();
+                    },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
-                        color: Colors.white10,
+                        color: _isEditMode ? const Color(0xFF00E5FF).withValues(alpha: 0.2) : Colors.white10,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.white24),
+                        border: Border.all(color: _isEditMode ? const Color(0xFF00E5FF) : Colors.white24),
                       ),
                       child: Row(
                         children: [
                           Icon(
-                            _joystickType == 'dpadSquare4' ? Icons.grid_view : Icons.track_changes,
-                            color: const Color(0xFF00E5FF),
+                            _isEditMode ? Icons.check : Icons.tune,
+                            color: _isEditMode ? const Color(0xFF00E5FF) : Colors.white70,
                             size: 16,
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            _joystickType == 'dpadSquare4' ? 'Ô vuông' : '360°',
-                            style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 11, fontWeight: FontWeight.bold),
+                            _isEditMode ? 'Xong' : 'Chỉnh nút',
+                            style: TextStyle(
+                              color: _isEditMode ? const Color(0xFF00E5FF) : Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
@@ -436,14 +435,11 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   Widget _buildLandscapeLayout() {
     return Stack(
       children: [
-        // 0. Màn hình game trực tiếp từ máy chủ ở chính giữa (thụt lề trên 44px để hoàn toàn không chạm thanh điều khiển P2)
+        // 0. Màn hình game trực tiếp từ máy chủ ở chính giữa (chuẩn 4:3)
         Center(
           child: AspectRatio(
             aspectRatio: 4 / 3,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 44, bottom: 6),
-              child: _buildLiveGameScreen(height: null, isLandscape: true),
-            ),
+            child: _buildLiveGameScreen(height: null, isLandscape: true),
           ),
         ),
 
@@ -463,138 +459,29 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
               _saveGamepadSettings();
             },
             onButtonEvent: _handleButtonEvent,
-            onOpenMenu: () {},
-            onToggleSpeed: () {},
-          ),
-        ),
-
-        // 2. Bảng điều khiển P2 CÓ THỂ KÉO THẢ TÙY Ý (Draggable) & Mặc định ở góc trái trên, không che game
-        Positioned(
-          left: _p2BarOffset.dx,
-          top: _p2BarOffset.dy,
-          child: GestureDetector(
-            onPanUpdate: (details) {
-              setState(() {
-                _p2BarOffset += details.delta;
-              });
+            onOpenMenu: () {
+              setState(() => _isEditMode = !_isEditMode);
+              if (!_isEditMode) _saveGamepadSettings();
             },
-            child: _isP2BarMinimized
-                ? InkWell(
-                    onTap: () => setState(() => _isP2BarMinimized = false),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF131C31).withValues(alpha: 0.88),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.6)),
-                        boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6)],
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.sports_esports, color: Color(0xFF00E676), size: 16),
-                          SizedBox(width: 4),
-                          Text('P2', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
-                          SizedBox(width: 2),
-                          Icon(Icons.keyboard_arrow_down, color: Colors.white70, size: 14),
-                        ],
-                      ),
-                    ),
-                  )
-                : Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF131C31).withValues(alpha: 0.94),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.5)),
-                      boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 2))],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.drag_indicator, size: 14, color: Colors.white38),
-                        const SizedBox(width: 4),
-                        // Nút Nạp xu nhanh
-                        InkWell(
-                          onTap: () => _quickPulseButton('SELECT'),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE5A800),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(Icons.monetization_on, size: 12, color: Colors.black87),
-                                SizedBox(width: 3),
-                                Text('Nạp Xu', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 10)),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        // Nút Bắt đầu P2
-                        InkWell(
-                          onTap: _triggerStartP2,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF00C853),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(Icons.play_arrow, size: 12, color: Colors.white),
-                                SizedBox(width: 3),
-                                Text('START P2', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10)),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(width: 1, height: 12, color: Colors.white24),
-                        const SizedBox(width: 6),
-                        // Bật/tắt chế độ chỉnh nút
-                        InkWell(
-                          onTap: () {
-                            setState(() => _isEditMode = !_isEditMode);
-                            if (!_isEditMode) _saveGamepadSettings();
-                          },
-                          child: Icon(
-                            _isEditMode ? Icons.check : Icons.tune,
-                            color: _isEditMode ? const Color(0xFF00E5FF) : Colors.white70,
-                            size: 16,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Nút thu nhỏ vào góc
-                        InkWell(
-                          onTap: () => setState(() => _isP2BarMinimized = true),
-                          child: const Icon(Icons.keyboard_arrow_up, color: Colors.white70, size: 16),
-                        ),
-                        const SizedBox(width: 6),
-                        // Thoát
-                        InkWell(
-                          onTap: () {
-                            widget.clanService.stopAll();
-                            Navigator.pop(context);
-                          },
-                          child: const Icon(Icons.close, color: Colors.white70, size: 16),
-                        ),
-                      ],
-                    ),
-                  ),
+            onToggleSpeed: () {},
+            onExit: () {
+              widget.clanService.stopAll();
+              if (mounted && Navigator.canPop(context)) {
+                Navigator.pop(context);
+              }
+            },
           ),
         ),
 
-        // Audio Receiver ẩn phát âm thanh trực tiếp từ máy chủ
+        // Audio Receiver phát âm thanh trực tiếp từ máy chủ
         if (_audioController != null)
           Positioned(
-            left: -100,
-            top: -100,
-            child: SizedBox(
-              width: 1,
-              height: 1,
+            bottom: 0,
+            right: 0,
+            width: 2,
+            height: 2,
+            child: Opacity(
+              opacity: 0.01,
               child: WebViewWidget(controller: _audioController!),
             ),
           ),

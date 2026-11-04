@@ -329,78 +329,115 @@ class ClanNetplayService {
   bool _isSubnetScanning = false;
   String? lastKnownHostIp;
 
-  /// Quét nhanh dải mạng nội bộ qua HTTP (ưu tiên máy chủ gần nhất và dải lân cận)
+  /// Đặt lại cờ quét khi người dùng bấm nút làm mới
+  void forceScan([String? priorityIp]) {
+    _isSubnetScanning = false;
+    scanSubnet(priorityIp);
+  }
+
+  /// Quét nhanh dải mạng nội bộ qua HTTP (Giai đoạn 1: Ưu tiên siêu tốc 200ms, Giai đoạn 2: Quét toàn dải)
   Future<void> scanSubnet([String? priorityIp]) async {
     if (_isSubnetScanning) return;
     _isSubnetScanning = true;
     try {
       final localIp = await getLocalIp();
-      final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 350);
 
-      final List<String> targetIps = [];
-      if (priorityIp != null && priorityIp.isNotEmpty) {
-        targetIps.add(priorityIp);
+      final List<String> priorityList = [];
+      if (priorityIp != null && priorityIp.isNotEmpty && !priorityList.contains(priorityIp)) {
+        priorityList.add(priorityIp);
       }
-      if (lastKnownHostIp != null && !targetIps.contains(lastKnownHostIp)) {
-        targetIps.add(lastKnownHostIp!);
+      if (lastKnownHostIp != null && !priorityList.contains(lastKnownHostIp)) {
+        priorityList.add(lastKnownHostIp!);
       }
-      if (!targetIps.contains('127.0.0.1')) targetIps.add('127.0.0.1');
-      if (!targetIps.contains(localIp)) targetIps.add(localIp);
+      if (!priorityList.contains('127.0.0.1')) priorityList.add('127.0.0.1');
+      if (!priorityList.contains(localIp)) priorityList.add(localIp);
 
+      final List<String> remainingList = [];
       if (localIp.contains('.')) {
         final parts = localIp.split('.');
         if (parts.length == 4) {
           final prefix = '${parts[0]}.${parts[1]}.${parts[2]}';
           final hostNum = int.tryParse(parts[3]) ?? 0;
-          // Quét lân cận +-10 máy trước (thường router Wi-Fi cấp IP sát nhau)
-          for (int delta = 1; delta <= 10; delta++) {
+          // Thêm các máy lân cận (+-6) vào nhóm ưu tiên
+          for (int delta = 1; delta <= 6; delta++) {
             if (hostNum + delta <= 254) {
               final ip = '$prefix.${hostNum + delta}';
-              if (!targetIps.contains(ip)) targetIps.add(ip);
+              if (!priorityList.contains(ip)) priorityList.add(ip);
             }
             if (hostNum - delta >= 1) {
               final ip = '$prefix.${hostNum - delta}';
-              if (!targetIps.contains(ip)) targetIps.add(ip);
+              if (!priorityList.contains(ip)) priorityList.add(ip);
             }
           }
-          // Quét mở rộng các máy còn lại
+          // Toàn bộ các máy còn lại trong dải subnet
           for (int i = 1; i <= 254; i++) {
             final ip = '$prefix.$i';
-            if (!targetIps.contains(ip)) targetIps.add(ip);
+            if (!priorityList.contains(ip)) remainingList.add(ip);
           }
         }
       }
 
-      // Batch nhỏ 6 kết nối để tránh nghẽn socket hệ điều hành
-      const batchSize = 6;
-      for (int i = 0; i < targetIps.length; i += batchSize) {
-        final batch = targetIps.skip(i).take(batchSize);
-        await Future.wait(batch.map((targetIp) async {
-          try {
-            final uri = Uri.parse('http://$targetIp:$defaultWsPort/status');
-            final req = await client.getUrl(uri);
-            final res = await req.close();
-            if (res.statusCode == HttpStatus.ok) {
-              final body = await res.transform(utf8.decoder).join();
-              final json = jsonDecode(body) as Map<String, dynamic>;
-              final hostIp = targetIp;
-              final roomName = json['roomName'] as String? ?? 'Phòng Clan';
-              final gameTitle = json['gameTitle'] as String? ?? 'Game';
-              final port = json['port'] as int? ?? defaultWsPort;
+      // --- GIAI ĐOẠN 1: Quét song song toàn bộ nhóm ưu tiên lân cận (SIÊU TỐC ~200ms) ---
+      final fastClient = HttpClient()..connectionTimeout = const Duration(milliseconds: 250);
+      await Future.wait(priorityList.map((targetIp) async {
+        try {
+          final uri = Uri.parse('http://$targetIp:$defaultWsPort/status');
+          final req = await fastClient.getUrl(uri);
+          final res = await req.close();
+          if (res.statusCode == HttpStatus.ok) {
+            final body = await res.transform(utf8.decoder).join();
+            final json = jsonDecode(body) as Map<String, dynamic>;
+            final hostIp = targetIp;
+            final roomName = json['roomName'] as String? ?? 'Phòng Clan';
+            final gameTitle = json['gameTitle'] as String? ?? 'Game';
+            final port = json['port'] as int? ?? defaultWsPort;
 
-              _discoveredRooms[hostIp] = ClanRoomInfo(
-                roomName: roomName,
-                gameTitle: gameTitle,
-                hostIp: hostIp,
-                port: port,
-                lastSeen: DateTime.now(),
-              );
-              onRoomsDiscovered?.call(_discoveredRooms.values.toList());
-            }
-          } catch (_) {}
-        }));
+            _discoveredRooms[hostIp] = ClanRoomInfo(
+              roomName: roomName,
+              gameTitle: gameTitle,
+              hostIp: hostIp,
+              port: port,
+              lastSeen: DateTime.now(),
+            );
+            onRoomsDiscovered?.call(_discoveredRooms.values.toList());
+          }
+        } catch (_) {}
+      }));
+      fastClient.close();
+
+      // --- GIAI ĐOẠN 2: Quét nhanh các máy còn lại theo batch 15 máy (~1.5 giây) ---
+      if (remainingList.isNotEmpty) {
+        final broadClient = HttpClient()..connectionTimeout = const Duration(milliseconds: 180);
+        const batchSize = 15;
+        for (int i = 0; i < remainingList.length; i += batchSize) {
+          final batch = remainingList.skip(i).take(batchSize);
+          await Future.wait(batch.map((targetIp) async {
+            try {
+              final uri = Uri.parse('http://$targetIp:$defaultWsPort/status');
+              final req = await broadClient.getUrl(uri);
+              final res = await req.close();
+              if (res.statusCode == HttpStatus.ok) {
+                final body = await res.transform(utf8.decoder).join();
+                final json = jsonDecode(body) as Map<String, dynamic>;
+                final hostIp = targetIp;
+                final roomName = json['roomName'] as String? ?? 'Phòng Clan';
+                final gameTitle = json['gameTitle'] as String? ?? 'Game';
+                final port = json['port'] as int? ?? defaultWsPort;
+
+                _discoveredRooms[hostIp] = ClanRoomInfo(
+                  roomName: roomName,
+                  gameTitle: gameTitle,
+                  hostIp: hostIp,
+                  port: port,
+                  lastSeen: DateTime.now(),
+                );
+                onRoomsDiscovered?.call(_discoveredRooms.values.toList());
+              }
+            } catch (_) {}
+          }));
+        }
+        broadClient.close();
       }
-      client.close();
     } catch (_) {} finally {
       _isSubnetScanning = false;
     }

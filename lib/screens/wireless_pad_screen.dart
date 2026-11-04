@@ -29,6 +29,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   String _joystickType = 'dpadSquare4'; // 'dpadSquare4' (ô vuông) hoặc 'analog360'
   String _joystickSensitivity = 'normal';
   bool _isEditMode = false;
+  bool _isP2BarMinimized = false;
   final ValueNotifier<Uint8List?> _screenFrameNotifier = ValueNotifier<Uint8List?>(null);
 
   Map<String, Offset>? _customButtonsLand;
@@ -175,7 +176,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
               ? Image.memory(
                   frameBytes,
                   gaplessPlayback: true,
-                  filterQuality: FilterQuality.low,
+                  filterQuality: FilterQuality.none,
                   fit: BoxFit.contain,
                 )
               : Center(
@@ -445,99 +446,114 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
           ),
         ),
 
-        // 2. Thanh điều hướng & trạng thái nổi ở giữa trên cùng (không che nút điều khiển)
+        // 2. Bảng điều khiển P2 ở góc trên bên phải (hoàn toàn không che màn hình game 4:3)
         Positioned(
-          top: 10,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF131C31).withValues(alpha: 0.9),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.4)),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 3)),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.sports_esports, color: Color(0xFF00E676), size: 16),
-                  const SizedBox(width: 6),
-                  Text(
-                    'P2: ${widget.gameTitle}',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                  const SizedBox(width: 10),
-                  Container(width: 1, height: 14, color: Colors.white24),
-                  const SizedBox(width: 10),
-                  // Nút Nạp xu nhanh
-                  InkWell(
-                    onTap: () => _quickPulseButton('SELECT'),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE5A800),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.monetization_on, size: 13, color: Colors.black87),
-                          SizedBox(width: 3),
-                          Text('Nạp Xu', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 10)),
-                        ],
-                      ),
+          top: 8,
+          right: 10,
+          child: _isP2BarMinimized
+              ? InkWell(
+                  onTap: () => setState(() => _isP2BarMinimized = false),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF131C31).withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.6)),
+                      boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6)],
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.sports_esports, color: Color(0xFF00E676), size: 16),
+                        SizedBox(width: 4),
+                        Text('P2 Menu', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
+                        SizedBox(width: 2),
+                        Icon(Icons.keyboard_arrow_down, color: Colors.white70, size: 14),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  // Nút Bắt đầu P2
-                  InkWell(
-                    onTap: _triggerStartP2,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF00C853),
-                        borderRadius: BorderRadius.circular(6),
+                )
+              : Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF131C31).withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.5)),
+                    boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 2))],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Nút Nạp xu nhanh
+                      InkWell(
+                        onTap: () => _quickPulseButton('SELECT'),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE5A800),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.monetization_on, size: 12, color: Colors.black87),
+                              SizedBox(width: 3),
+                              Text('Nạp Xu', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 10)),
+                            ],
+                          ),
+                        ),
                       ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.play_arrow, size: 13, color: Colors.white),
-                          SizedBox(width: 3),
-                          Text('START P2', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10)),
-                        ],
+                      const SizedBox(width: 6),
+                      // Nút Bắt đầu P2
+                      InkWell(
+                        onTap: _triggerStartP2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00C853),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.play_arrow, size: 12, color: Colors.white),
+                              SizedBox(width: 3),
+                              Text('START P2', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10)),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Container(width: 1, height: 12, color: Colors.white24),
+                      const SizedBox(width: 6),
+                      // Bật/tắt chế độ chỉnh nút
+                      InkWell(
+                        onTap: () {
+                          setState(() => _isEditMode = !_isEditMode);
+                          if (!_isEditMode) _saveGamepadSettings();
+                        },
+                        child: Icon(
+                          _isEditMode ? Icons.check : Icons.tune,
+                          color: _isEditMode ? const Color(0xFF00E5FF) : Colors.white70,
+                          size: 16,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Nút thu nhỏ vào góc
+                      InkWell(
+                        onTap: () => setState(() => _isP2BarMinimized = true),
+                        child: const Icon(Icons.keyboard_arrow_up, color: Colors.white70, size: 16),
+                      ),
+                      const SizedBox(width: 6),
+                      // Thoát
+                      InkWell(
+                        onTap: () {
+                          widget.clanService.stopAll();
+                          Navigator.pop(context);
+                        },
+                        child: const Icon(Icons.close, color: Colors.white70, size: 16),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Container(width: 1, height: 14, color: Colors.white24),
-                  const SizedBox(width: 6),
-                  // Bật/tắt chế độ chỉnh nút
-                  InkWell(
-                    onTap: () {
-                      setState(() => _isEditMode = !_isEditMode);
-                      if (!_isEditMode) _saveGamepadSettings();
-                    },
-                    child: Icon(
-                      _isEditMode ? Icons.check : Icons.tune,
-                      color: _isEditMode ? const Color(0xFF00E5FF) : Colors.white70,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  // Thoát
-                  InkWell(
-                    onTap: () {
-                      widget.clanService.stopAll();
-                      Navigator.pop(context);
-                    },
-                    child: const Icon(Icons.close, color: Colors.white70, size: 18),
-                  ),
-                ],
-              ),
-            ),
-          ),
+                ),
         ),
 
         // Thanh chỉnh nút chế độ ngang

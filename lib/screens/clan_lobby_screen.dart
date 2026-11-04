@@ -448,52 +448,72 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: const Color(0xFF131D33),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0xFF29A3FF).withValues(alpha: 0.5), width: 1.2),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  const Row(
                     children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.wifi_tethering, color: Color(0xFF00E5FF), size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'IP Chủ phòng: $_localIp:8989',
-                            style: const TextStyle(
-                              color: Color(0xFF00E5FF),
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              fontFamily: 'monospace',
-                            ),
-                          ),
-                        ],
-                      ),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1E88E5),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        icon: const Icon(Icons.copy, size: 14, color: Colors.white),
-                        label: const Text('Sao chép', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white)),
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: _localIp));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              backgroundColor: const Color(0xFF131C31),
-                              content: Text('Đã sao chép IP máy chủ: $_localIp'),
-                            ),
-                          );
-                        },
+                      Icon(Icons.wifi_tethering, color: Color(0xFF00E5FF), size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Địa chỉ IP máy chủ của bạn:',
+                        style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '$_localIp:8989',
+                            style: const TextStyle(
+                              color: Color(0xFF00E5FF),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                              fontFamily: 'monospace',
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF00E5FF),
+                            foregroundColor: Colors.black87,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            elevation: 2,
+                          ),
+                          icon: const Icon(Icons.copy, size: 16, color: Colors.black87),
+                          label: const Text(
+                            'Sao chép IP',
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
+                          ),
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: _localIp));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                backgroundColor: const Color(0xFF131C31),
+                                content: Text('Đã sao chép IP máy chủ: $_localIp'),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   Text(
                     'Bảo bạn của bạn mở Tab "VÀO PHÒNG (P2)" trên máy họ, gõ số: ${_localIp.split('.').last} (hoặc $_localIp) rồi bấm Kết nối!',
                     style: const TextStyle(color: Colors.white70, fontSize: 12),
@@ -503,7 +523,7 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
             ),
           ],
 
-          if (!_isHosting)
+          if (!_isHosting)          if (!_isHosting)
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -614,7 +634,11 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
               IconButton(
                 icon: const Icon(Icons.refresh, color: Colors.greenAccent),
                 tooltip: 'Quét lại phòng',
-                onPressed: () => widget.clanService.startDiscovery(),
+                onPressed: () {
+                  widget.clanService.forceScan(_lastConnectedHostIp);
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(duration: Duration(milliseconds: 900), content: Text('Đang quét siêu tốc toàn bộ mạng Wi-Fi...')));
+                },
               ),
             ],
           ),
@@ -654,7 +678,11 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
                       ),
                       icon: const Icon(Icons.radar, size: 16),
                       label: const Text('Quét toàn mạng Wi-Fi'),
-                      onPressed: () => widget.clanService.startDiscovery(),
+                      onPressed: () {
+                  widget.clanService.forceScan(_lastConnectedHostIp);
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(duration: Duration(milliseconds: 900), content: Text('Đang quét siêu tốc toàn bộ mạng Wi-Fi...')));
+                },
                     ),
                   ],
                 ),

@@ -667,9 +667,14 @@
     function getOffscreenCanvas() {
       if (!offscreenCanvas) {
         offscreenCanvas = document.createElement('canvas');
-        offscreenCanvas.width = 320;
-        offscreenCanvas.height = 240;
+        // Nâng cấp lên độ phân giải 640x480 (chuẩn HD 2x Retro) sắc nét tuyệt đối
+        offscreenCanvas.width = 640;
+        offscreenCanvas.height = 480;
         offscreenCtx = offscreenCanvas.getContext('2d', { alpha: false });
+        // Tắt nội suy mờ để giữ nguyên hạt pixel retro sắc cạnh như máy thùng
+        offscreenCtx.imageSmoothingEnabled = false;
+        offscreenCtx.webkitImageSmoothingEnabled = false;
+        offscreenCtx.mozImageSmoothingEnabled = false;
       }
       return { canvas: offscreenCanvas, ctx: offscreenCtx };
     }
@@ -708,8 +713,8 @@
 
           isCapturingFrame = true;
           const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas();
-          // Downscale trực tiếp về 320x240 để siêu nhẹ (~3KB), không giật lag mạng
-          offCtx.drawImage(cvs, 0, 0, 320, 240);
+          // Vẽ lên canvas 640x480 chất lượng cao, giữ pixel sắc nét
+          offCtx.drawImage(cvs, 0, 0, 640, 480);
           offCvs.toBlob((blob) => {
             try {
               if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
@@ -718,7 +723,7 @@
             } finally {
               isCapturingFrame = false;
             }
-          }, 'image/jpeg', 0.50);
+          }, 'image/jpeg', 0.82);
         } catch(e) {
           isCapturingFrame = false;
         }

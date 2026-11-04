@@ -210,18 +210,18 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
         final s = widget.buttonScale;
 
         final joySize = 130.0 * s;
-        final btnSize = 44.0 * s;
-        final comboW = 44.0 * s;
-        final comboH = 38.0 * s;
-        final selectW = 64.0 * s;
-        final selectH = 32.0 * s;
-        final startW = 64.0 * s;
-        final startH = 32.0 * s;
-        final menuSize = 36.0 * s;
-        final speedSize = 36.0 * s;
-        final gap = 8.0 * s;
+        final btnSize = 46.0 * s;
+        final comboW = 50.0 * s;
+        final comboH = 36.0 * s;
+        final selectW = 62.0 * s;
+        final selectH = 30.0 * s;
+        final startW = 62.0 * s;
+        final startH = 30.0 * s;
+        final menuSize = 34.0 * s;
+        final speedSize = 34.0 * s;
+        final gap = 14.0 * s;
 
-        // Tính toán tọa độ mặc định chuẩn Image 1 (Không có nút nào ở giữa)
+        // Tính toán tọa độ mặc định chuẩn (Rõ ràng, không bị đè hay lấn vào nhau)
         final Map<String, Offset> defaultPositions = {};
 
         if (widget.isLandscape) {
@@ -239,39 +239,42 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
           final rightBaseX = W - margin - rowW;
           final bottomBaseY = H - margin;
 
+          final bottomRowY = bottomBaseY - btnSize;
+          final topRowY = bottomRowY - gap - btnSize;
+
           if (widget.buttonLayout == 'arcade4Row') {
             // 4 nút thẳng hàng: A+B, C+D ở trên; A, B, C, D ở dưới
             final row4W = btnSize * 4 + gap * 3;
             final right4X = W - margin - row4W;
-            defaultPositions['AB'] = Offset(right4X, bottomBaseY - btnSize - 10.0 * s - comboH);
-            defaultPositions['CD'] = Offset(right4X + comboW + gap * 2, bottomBaseY - btnSize - 10.0 * s - comboH);
-            defaultPositions['A'] = Offset(right4X, bottomBaseY - btnSize);
-            defaultPositions['B'] = Offset(right4X + btnSize + gap, bottomBaseY - btnSize);
-            defaultPositions['C'] = Offset(right4X + (btnSize + gap) * 2, bottomBaseY - btnSize);
-            defaultPositions['D'] = Offset(right4X + (btnSize + gap) * 3, bottomBaseY - btnSize);
+            defaultPositions['AB'] = Offset(right4X, topRowY + (btnSize - comboH) / 2);
+            defaultPositions['CD'] = Offset(right4X + comboW + gap * 2, topRowY + (btnSize - comboH) / 2);
+            defaultPositions['A'] = Offset(right4X, bottomRowY);
+            defaultPositions['B'] = Offset(right4X + btnSize + gap, bottomRowY);
+            defaultPositions['C'] = Offset(right4X + (btnSize + gap) * 2, bottomRowY);
+            defaultPositions['D'] = Offset(right4X + (btnSize + gap) * 3, bottomRowY);
           } else if (widget.buttonLayout == 'arcade4Arc') {
             // Vòng cung Neo Geo
             final arcBaseX = W - margin - (220.0 * s);
             defaultPositions['A'] = Offset(arcBaseX, bottomBaseY - btnSize - 6.0 * s);
-            defaultPositions['B'] = Offset(arcBaseX + 50.0 * s, bottomBaseY - btnSize - 30.0 * s);
-            defaultPositions['C'] = Offset(arcBaseX + 104.0 * s, bottomBaseY - btnSize - 44.0 * s);
-            defaultPositions['D'] = Offset(arcBaseX + 158.0 * s, bottomBaseY - btnSize - 28.0 * s);
-            defaultPositions['AB'] = Offset(arcBaseX + 48.0 * s, bottomBaseY - comboH);
-            defaultPositions['CD'] = Offset(arcBaseX + 122.0 * s, bottomBaseY - comboH);
+            defaultPositions['B'] = Offset(arcBaseX + 54.0 * s, bottomBaseY - btnSize - 30.0 * s);
+            defaultPositions['C'] = Offset(arcBaseX + 110.0 * s, bottomBaseY - btnSize - 44.0 * s);
+            defaultPositions['D'] = Offset(arcBaseX + 166.0 * s, bottomBaseY - btnSize - 28.0 * s);
+            defaultPositions['AB'] = Offset(arcBaseX + 50.0 * s, bottomBaseY - comboH);
+            defaultPositions['CD'] = Offset(arcBaseX + 128.0 * s, bottomBaseY - comboH);
           } else {
-            // Chuẩn Neo Geo 6 nút (2 hàng x 3 nút) đúng như Image 1
-            defaultPositions['AB'] = Offset(rightBaseX, bottomBaseY - btnSize + (btnSize - comboH) / 2);
-            defaultPositions['A'] = Offset(rightBaseX + comboW + gap, bottomBaseY - btnSize);
-            defaultPositions['B'] = Offset(rightBaseX + comboW + gap + btnSize + gap, bottomBaseY - btnSize);
+            // Chuẩn Neo Geo 6 nút (2 hàng x 3 nút) - Rõ ràng, rộng rãi, tuyệt đối không bị đè nút
+            defaultPositions['AB'] = Offset(rightBaseX, bottomRowY + (btnSize - comboH) / 2);
+            defaultPositions['A'] = Offset(rightBaseX + comboW + gap, bottomRowY);
+            defaultPositions['B'] = Offset(rightBaseX + comboW + gap + btnSize + gap, bottomRowY);
 
-            defaultPositions['CD'] = Offset(rightBaseX, bottomBaseY - btnSize - 10.0 * s - btnSize + (btnSize - comboH) / 2);
-            defaultPositions['C'] = Offset(rightBaseX + comboW + gap, bottomBaseY - btnSize - 10.0 * s - btnSize);
-            defaultPositions['D'] = Offset(rightBaseX + comboW + gap + btnSize + gap, bottomBaseY - btnSize - 10.0 * s - btnSize);
+            defaultPositions['CD'] = Offset(rightBaseX, topRowY + (btnSize - comboH) / 2);
+            defaultPositions['C'] = Offset(rightBaseX + comboW + gap, topRowY);
+            defaultPositions['D'] = Offset(rightBaseX + comboW + gap + btnSize + gap, topRowY);
           }
 
           // Phím MENU [≡] và START ngay trên cụm nút hành động bên phải
-          defaultPositions['START'] = Offset(W - margin - startW, max(0.0, bottomBaseY - btnSize - 10.0 * s - btnSize - startH - 12.0 * s));
-          defaultPositions['MENU'] = Offset(W - margin - startW - gap - menuSize, max(0.0, bottomBaseY - btnSize - 10.0 * s - btnSize - menuSize - 10.0 * s));
+          defaultPositions['START'] = Offset(W - margin - startW, max(0.0, topRowY - startH - 12.0 * s));
+          defaultPositions['MENU'] = Offset(W - margin - startW - gap - menuSize, max(0.0, topRowY - menuSize - 10.0 * s));
         } else {
           // Giao diện Dọc (Portrait)
           final topY = 10.0 * s;
@@ -289,13 +292,16 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
           final rightBaseX = W - 16.0 * s - rowW;
           final bottomBaseY = H - 16.0 * s;
 
-          defaultPositions['AB'] = Offset(rightBaseX, bottomBaseY - btnSize + (btnSize - comboH) / 2);
-          defaultPositions['A'] = Offset(rightBaseX + comboW + gap, bottomBaseY - btnSize);
-          defaultPositions['B'] = Offset(rightBaseX + comboW + gap + btnSize + gap, bottomBaseY - btnSize);
+          final bottomRowY = bottomBaseY - btnSize;
+          final topRowY = bottomRowY - gap - btnSize;
 
-          defaultPositions['CD'] = Offset(rightBaseX, bottomBaseY - btnSize - 10.0 * s - btnSize + (btnSize - comboH) / 2);
-          defaultPositions['C'] = Offset(rightBaseX + comboW + gap, bottomBaseY - btnSize - 10.0 * s - btnSize);
-          defaultPositions['D'] = Offset(rightBaseX + comboW + gap + btnSize + gap, bottomBaseY - btnSize - 10.0 * s - btnSize);
+          defaultPositions['AB'] = Offset(rightBaseX, bottomRowY + (btnSize - comboH) / 2);
+          defaultPositions['A'] = Offset(rightBaseX + comboW + gap, bottomRowY);
+          defaultPositions['B'] = Offset(rightBaseX + comboW + gap + btnSize + gap, bottomRowY);
+
+          defaultPositions['CD'] = Offset(rightBaseX, topRowY + (btnSize - comboH) / 2);
+          defaultPositions['C'] = Offset(rightBaseX + comboW + gap, topRowY);
+          defaultPositions['D'] = Offset(rightBaseX + comboW + gap + btnSize + gap, topRowY);
         }
 
         return Stack(
@@ -320,10 +326,13 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
               defaultPos: defaultPositions['SELECT'] ?? const Offset(20, 20),
               W: W,
               H: H,
-              child: _buildSystemPill(
-                'SELECT',
-                () => widget.onButtonEvent('SELECT', true),
-                () => widget.onButtonEvent('SELECT', false),
+              child: _SystemPill(
+                label: 'SELECT',
+                scale: s,
+                isEditMode: widget.isEditMode,
+                onHaptic: _triggerHaptic,
+                onDown: () => widget.onButtonEvent('SELECT', true),
+                onUp: () => widget.onButtonEvent('SELECT', false),
               ),
             ),
 
@@ -336,8 +345,11 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
               W: W,
               H: H,
               isCircle: true,
-              child: _buildCircularCenterBtn(
+              child: _CircularCenterBtn(
                 text: 'X${widget.speedMultiplier}',
+                scale: s,
+                isEditMode: widget.isEditMode,
+                onHaptic: _triggerHaptic,
                 onTap: widget.onToggleSpeed,
               ),
             ),
@@ -351,8 +363,11 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
               W: W,
               H: H,
               isCircle: true,
-              child: _buildCircularCenterBtn(
+              child: _CircularCenterBtn(
                 icon: Icons.menu_rounded,
+                scale: s,
+                isEditMode: widget.isEditMode,
+                onHaptic: _triggerHaptic,
                 onTap: widget.onOpenMenu,
               ),
             ),
@@ -365,10 +380,13 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
               defaultPos: defaultPositions['START'] ?? Offset(W - 70, 20),
               W: W,
               H: H,
-              child: _buildSystemPill(
-                'START',
-                () => widget.onButtonEvent('START', true),
-                () => widget.onButtonEvent('START', false),
+              child: _SystemPill(
+                label: 'START',
+                scale: s,
+                isEditMode: widget.isEditMode,
+                onHaptic: _triggerHaptic,
+                onDown: () => widget.onButtonEvent('START', true),
+                onUp: () => widget.onButtonEvent('START', false),
               ),
             ),
 
@@ -377,16 +395,23 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
               id: 'CD',
               width: comboW,
               height: comboH,
-              defaultPos: defaultPositions['CD'] ?? Offset(W - 160, 100),
+              defaultPos: defaultPositions['CD'] ?? Offset(W - 170, 100),
               W: W,
               H: H,
-              child: _buildComboBtn('C+D', () {
-                widget.onButtonEvent('C', true);
-                widget.onButtonEvent('D', true);
-              }, () {
-                widget.onButtonEvent('C', false);
-                widget.onButtonEvent('D', false);
-              }),
+              child: _ComboBtn(
+                label: 'C+D',
+                scale: s,
+                isEditMode: widget.isEditMode,
+                onHaptic: _triggerHaptic,
+                onDown: () {
+                  widget.onButtonEvent('C', true);
+                  widget.onButtonEvent('D', true);
+                },
+                onUp: () {
+                  widget.onButtonEvent('C', false);
+                  widget.onButtonEvent('D', false);
+                },
+              ),
             ),
 
             // 7. NÚT C (Xanh lá) (Kéo thả độc lập)
@@ -394,11 +419,19 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
               id: 'C',
               width: btnSize,
               height: btnSize,
-              defaultPos: defaultPositions['C'] ?? Offset(W - 100, 100),
+              defaultPos: defaultPositions['C'] ?? Offset(W - 110, 100),
               W: W,
               H: H,
               isCircle: true,
-              child: _buildArcadeCircleBtn('C', const Color(0xFF4CAF50), const Color(0xFF2E7D32)),
+              child: _ArcadeCircleBtn(
+                label: 'C',
+                primaryColor: const Color(0xFF4CAF50),
+                darkColor: const Color(0xFF2E7D32),
+                scale: s,
+                isEditMode: widget.isEditMode,
+                onHaptic: _triggerHaptic,
+                onButtonEvent: widget.onButtonEvent,
+              ),
             ),
 
             // 8. NÚT D (Xanh dương) (Kéo thả độc lập)
@@ -410,7 +443,15 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
               W: W,
               H: H,
               isCircle: true,
-              child: _buildArcadeCircleBtn('D', const Color(0xFF2196F3), const Color(0xFF0D47A1)),
+              child: _ArcadeCircleBtn(
+                label: 'D',
+                primaryColor: const Color(0xFF2196F3),
+                darkColor: const Color(0xFF0D47A1),
+                scale: s,
+                isEditMode: widget.isEditMode,
+                onHaptic: _triggerHaptic,
+                onButtonEvent: widget.onButtonEvent,
+              ),
             ),
 
             // 9. NÚT A+B (Kéo thả độc lập)
@@ -418,16 +459,23 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
               id: 'AB',
               width: comboW,
               height: comboH,
-              defaultPos: defaultPositions['AB'] ?? Offset(W - 160, 160),
+              defaultPos: defaultPositions['AB'] ?? Offset(W - 170, 160),
               W: W,
               H: H,
-              child: _buildComboBtn('A+B', () {
-                widget.onButtonEvent('A', true);
-                widget.onButtonEvent('B', true);
-              }, () {
-                widget.onButtonEvent('A', false);
-                widget.onButtonEvent('B', false);
-              }),
+              child: _ComboBtn(
+                label: 'A+B',
+                scale: s,
+                isEditMode: widget.isEditMode,
+                onHaptic: _triggerHaptic,
+                onDown: () {
+                  widget.onButtonEvent('A', true);
+                  widget.onButtonEvent('B', true);
+                },
+                onUp: () {
+                  widget.onButtonEvent('A', false);
+                  widget.onButtonEvent('B', false);
+                },
+              ),
             ),
 
             // 10. NÚT A (Đỏ - Đặt bom chính xác 100%) (Kéo thả độc lập)
@@ -435,11 +483,19 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
               id: 'A',
               width: btnSize,
               height: btnSize,
-              defaultPos: defaultPositions['A'] ?? Offset(W - 100, 160),
+              defaultPos: defaultPositions['A'] ?? Offset(W - 110, 160),
               W: W,
               H: H,
               isCircle: true,
-              child: _buildArcadeCircleBtn('A', const Color(0xFFE53935), const Color(0xFFB71C1C)),
+              child: _ArcadeCircleBtn(
+                label: 'A',
+                primaryColor: const Color(0xFFE53935),
+                darkColor: const Color(0xFFB71C1C),
+                scale: s,
+                isEditMode: widget.isEditMode,
+                onHaptic: _triggerHaptic,
+                onButtonEvent: widget.onButtonEvent,
+              ),
             ),
 
             // 11. NÚT B (Vàng/Cam) (Kéo thả độc lập)
@@ -451,7 +507,15 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
               W: W,
               H: H,
               isCircle: true,
-              child: _buildArcadeCircleBtn('B', const Color(0xFFFFB300), const Color(0xFFE65100)),
+              child: _ArcadeCircleBtn(
+                label: 'B',
+                primaryColor: const Color(0xFFFFB300),
+                darkColor: const Color(0xFFE65100),
+                scale: s,
+                isEditMode: widget.isEditMode,
+                onHaptic: _triggerHaptic,
+                onButtonEvent: widget.onButtonEvent,
+              ),
             ),
 
             // 12. Nút xoay lại góc trên bên PHẢI (khi ở chế độ Ngang và không ở chế độ chỉnh)
@@ -860,205 +924,362 @@ class _ArcadeGamepadState extends State<ArcadeGamepad> {
         setState(() => _activeDPadDirs.remove(direction));
         widget.onButtonEvent(direction, false);
       },
-      child: Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          color: isDown ? const Color(0xFFD4AF37) : Colors.transparent,
-          borderRadius: BorderRadius.circular(4 * widget.buttonScale),
-        ),
-        child: Center(
-          child: Icon(
-            icon,
-            color: isDown ? Colors.black : const Color(0xFFF2ECE1),
-            size: 28 * widget.buttonScale,
+      child: AnimatedScale(
+        scale: isDown ? 0.92 : 1.0,
+        duration: const Duration(milliseconds: 60),
+        curve: Curves.easeOut,
+        child: Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: isDown ? const Color(0xFFD4AF37) : Colors.transparent,
+            borderRadius: BorderRadius.circular(4 * widget.buttonScale),
+          ),
+          child: Center(
+            child: Icon(
+              icon,
+              color: isDown ? Colors.black : const Color(0xFFF2ECE1),
+              size: 28 * widget.buttonScale,
+            ),
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildSystemPill(String label, VoidCallback onDown, VoidCallback onUp) {
-    final s = widget.buttonScale;
-    final w = 64.0 * s;
-    final h = 32.0 * s;
+/// Nút chữ nhật bo góc SELECT / START (Có hiệu ứng nhún nhẹ 0.92 khi nhấn)
+class _SystemPill extends StatefulWidget {
+  final String label;
+  final double scale;
+  final bool isEditMode;
+  final VoidCallback onHaptic;
+  final VoidCallback onDown;
+  final VoidCallback onUp;
+
+  const _SystemPill({
+    required this.label,
+    required this.scale,
+    required this.isEditMode,
+    required this.onHaptic,
+    required this.onDown,
+    required this.onUp,
+  });
+
+  @override
+  State<_SystemPill> createState() => _SystemPillState();
+}
+
+class _SystemPillState extends State<_SystemPill> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.scale;
+    final w = 62.0 * s;
+    final h = 30.0 * s;
 
     return Listener(
       onPointerDown: (_) {
         if (widget.isEditMode) return;
-        _triggerHaptic();
-        onDown();
+        widget.onHaptic();
+        setState(() => _isPressed = true);
+        widget.onDown();
       },
       onPointerUp: (_) {
         if (widget.isEditMode) return;
-        onUp();
+        setState(() => _isPressed = false);
+        widget.onUp();
       },
       onPointerCancel: (_) {
         if (widget.isEditMode) return;
-        onUp();
+        setState(() => _isPressed = false);
+        widget.onUp();
       },
-      child: Container(
-        width: w,
-        height: h,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF2ECE1),
-          borderRadius: BorderRadius.circular(16 * s),
-          border: Border.all(color: const Color(0xFFC7BBA5), width: 1.5 * s),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.5),
-              offset: const Offset(0, 2),
-              blurRadius: 3,
-            ),
-          ],
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: const Color(0xFF3E3120),
-            fontSize: 10 * s,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0.8,
+      child: AnimatedScale(
+        scale: _isPressed ? 0.92 : 1.0,
+        duration: const Duration(milliseconds: 60),
+        curve: Curves.easeOut,
+        child: Container(
+          width: w,
+          height: h,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _isPressed ? const Color(0xFFDED6C8) : const Color(0xFFF2ECE1),
+            borderRadius: BorderRadius.circular(15 * s),
+            border: Border.all(color: const Color(0xFFC7BBA5), width: 1.5 * s),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: _isPressed ? 0.6 : 0.4),
+                offset: _isPressed ? const Offset(0, 1) : const Offset(0, 2),
+                blurRadius: _isPressed ? 2 : 3,
+              ),
+            ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCircularCenterBtn({IconData? icon, String? text, required VoidCallback onTap}) {
-    final s = widget.buttonScale;
-    final size = 36.0 * s;
-
-    return InkWell(
-      onTap: () {
-        if (widget.isEditMode) return;
-        _triggerHaptic();
-        onTap();
-      },
-      borderRadius: BorderRadius.circular(size / 2),
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF2ECE1),
-          shape: BoxShape.circle,
-          border: Border.all(color: const Color(0xFFC7BBA5), width: 1.5 * s),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.4),
-              offset: const Offset(0, 2),
-              blurRadius: 3,
-            ),
-          ],
-        ),
-        child: Center(
-          child: icon != null
-              ? Icon(icon, color: const Color(0xFF3E3120), size: 18 * s)
-              : Text(
-                  text ?? '',
-                  style: TextStyle(
-                    color: const Color(0xFF3E3120),
-                    fontSize: 11 * s,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildComboBtn(String label, VoidCallback onDown, VoidCallback onUp) {
-    final s = widget.buttonScale;
-    final w = 44.0 * s;
-    final h = 38.0 * s;
-
-    return Listener(
-      onPointerDown: (_) {
-        if (widget.isEditMode) return;
-        _triggerHaptic();
-        onDown();
-      },
-      onPointerUp: (_) {
-        if (widget.isEditMode) return;
-        onUp();
-      },
-      onPointerCancel: (_) {
-        if (widget.isEditMode) return;
-        onUp();
-      },
-      child: Container(
-        width: w,
-        height: h,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF2ECE1),
-          borderRadius: BorderRadius.circular(19 * s),
-          border: Border.all(color: const Color(0xFFC7BBA5), width: 1.5 * s),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.4),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: const Color(0xFF3E3120),
-            fontSize: 11 * s,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildArcadeCircleBtn(String label, Color primaryColor, Color darkColor) {
-    final s = widget.buttonScale;
-    final size = 44.0 * s;
-
-    return Listener(
-      onPointerDown: (_) {
-        if (widget.isEditMode) return;
-        _triggerHaptic();
-        widget.onButtonEvent(label, true);
-      },
-      onPointerUp: (_) {
-        if (widget.isEditMode) return;
-        widget.onButtonEvent(label, false);
-      },
-      onPointerCancel: (_) {
-        if (widget.isEditMode) return;
-        widget.onButtonEvent(label, false);
-      },
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [primaryColor, darkColor],
-            center: const Alignment(-0.25, -0.25),
-          ),
-          border: Border.all(color: const Color(0xFFF2ECE1), width: 2 * s),
-          boxShadow: [
-            BoxShadow(
-              color: primaryColor.withValues(alpha: 0.4),
-              blurRadius: 6,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Center(
           child: Text(
-            label,
+            widget.label,
             style: TextStyle(
-              color: Colors.white,
-              fontSize: 18 * s,
-              fontWeight: FontWeight.bold,
-              shadows: const [Shadow(color: Colors.black54, blurRadius: 2, offset: Offset(1, 1))],
+              color: const Color(0xFF3E3120),
+              fontSize: 10 * s,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.8,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Nút tròn phụ trợ MENU / TỐC ĐỘ (Có hiệu ứng nhún nhẹ 0.92 khi nhấn)
+class _CircularCenterBtn extends StatefulWidget {
+  final IconData? icon;
+  final String? text;
+  final double scale;
+  final bool isEditMode;
+  final VoidCallback onHaptic;
+  final VoidCallback onTap;
+
+  const _CircularCenterBtn({
+    this.icon,
+    this.text,
+    required this.scale,
+    required this.isEditMode,
+    required this.onHaptic,
+    required this.onTap,
+  });
+
+  @override
+  State<_CircularCenterBtn> createState() => _CircularCenterBtnState();
+}
+
+class _CircularCenterBtnState extends State<_CircularCenterBtn> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.scale;
+    final size = 34.0 * s;
+
+    return Listener(
+      onPointerDown: (_) {
+        if (widget.isEditMode) return;
+        widget.onHaptic();
+        setState(() => _isPressed = true);
+        widget.onTap();
+      },
+      onPointerUp: (_) {
+        if (widget.isEditMode) return;
+        setState(() => _isPressed = false);
+      },
+      onPointerCancel: (_) {
+        if (widget.isEditMode) return;
+        setState(() => _isPressed = false);
+      },
+      child: AnimatedScale(
+        scale: _isPressed ? 0.92 : 1.0,
+        duration: const Duration(milliseconds: 60),
+        curve: Curves.easeOut,
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: _isPressed ? const Color(0xFFDED6C8) : const Color(0xFFF2ECE1),
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFFC7BBA5), width: 1.5 * s),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: _isPressed ? 0.5 : 0.4),
+                offset: _isPressed ? const Offset(0, 1) : const Offset(0, 2),
+                blurRadius: 3,
+              ),
+            ],
+          ),
+          child: Center(
+            child: widget.icon != null
+                ? Icon(widget.icon, color: const Color(0xFF3E3120), size: 18 * s)
+                : Text(
+                    widget.text ?? '',
+                    style: TextStyle(
+                      color: const Color(0xFF3E3120),
+                      fontSize: 11 * s,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Nút Combo A+B / C+D (Có hiệu ứng nhún nhẹ 0.92 khi nhấn)
+class _ComboBtn extends StatefulWidget {
+  final String label;
+  final double scale;
+  final bool isEditMode;
+  final VoidCallback onHaptic;
+  final VoidCallback onDown;
+  final VoidCallback onUp;
+
+  const _ComboBtn({
+    required this.label,
+    required this.scale,
+    required this.isEditMode,
+    required this.onHaptic,
+    required this.onDown,
+    required this.onUp,
+  });
+
+  @override
+  State<_ComboBtn> createState() => _ComboBtnState();
+}
+
+class _ComboBtnState extends State<_ComboBtn> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.scale;
+    final w = 50.0 * s;
+    final h = 36.0 * s;
+
+    return Listener(
+      onPointerDown: (_) {
+        if (widget.isEditMode) return;
+        widget.onHaptic();
+        setState(() => _isPressed = true);
+        widget.onDown();
+      },
+      onPointerUp: (_) {
+        if (widget.isEditMode) return;
+        setState(() => _isPressed = false);
+        widget.onUp();
+      },
+      onPointerCancel: (_) {
+        if (widget.isEditMode) return;
+        setState(() => _isPressed = false);
+        widget.onUp();
+      },
+      child: AnimatedScale(
+        scale: _isPressed ? 0.92 : 1.0,
+        duration: const Duration(milliseconds: 60),
+        curve: Curves.easeOut,
+        child: Container(
+          width: w,
+          height: h,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _isPressed ? const Color(0xFFDED6C8) : const Color(0xFFF2ECE1),
+            borderRadius: BorderRadius.circular(18 * s),
+            border: Border.all(color: const Color(0xFFC7BBA5), width: 1.5 * s),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: _isPressed ? 0.5 : 0.4),
+                blurRadius: _isPressed ? 2 : 4,
+                offset: _isPressed ? const Offset(0, 1) : const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Text(
+            widget.label,
+            style: TextStyle(
+              color: const Color(0xFF3E3120),
+              fontSize: 11 * s,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Nút tròn hành động A, B, C, D Arcade (Có hiệu ứng nhún nhẹ 0.92 khi nhấn và phát sáng viền)
+class _ArcadeCircleBtn extends StatefulWidget {
+  final String label;
+  final Color primaryColor;
+  final Color darkColor;
+  final double scale;
+  final bool isEditMode;
+  final VoidCallback onHaptic;
+  final Function(String btn, bool isDown) onButtonEvent;
+
+  const _ArcadeCircleBtn({
+    required this.label,
+    required this.primaryColor,
+    required this.darkColor,
+    required this.scale,
+    required this.isEditMode,
+    required this.onHaptic,
+    required this.onButtonEvent,
+  });
+
+  @override
+  State<_ArcadeCircleBtn> createState() => _ArcadeCircleBtnState();
+}
+
+class _ArcadeCircleBtnState extends State<_ArcadeCircleBtn> {
+  bool _isPressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.scale;
+    final size = 46.0 * s;
+
+    return Listener(
+      onPointerDown: (_) {
+        if (widget.isEditMode) return;
+        widget.onHaptic();
+        setState(() => _isPressed = true);
+        widget.onButtonEvent(widget.label, true);
+      },
+      onPointerUp: (_) {
+        if (widget.isEditMode) return;
+        setState(() => _isPressed = false);
+        widget.onButtonEvent(widget.label, false);
+      },
+      onPointerCancel: (_) {
+        if (widget.isEditMode) return;
+        setState(() => _isPressed = false);
+        widget.onButtonEvent(widget.label, false);
+      },
+      child: AnimatedScale(
+        scale: _isPressed ? 0.92 : 1.0,
+        duration: const Duration(milliseconds: 60),
+        curve: Curves.easeOut,
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: _isPressed
+                  ? [widget.primaryColor.withValues(alpha: 0.85), widget.darkColor]
+                  : [widget.primaryColor, widget.darkColor],
+              center: const Alignment(-0.25, -0.25),
+            ),
+            border: Border.all(
+              color: _isPressed ? const Color(0xFFFFD700) : const Color(0xFFF2ECE1),
+              width: 2 * s,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: widget.primaryColor.withValues(alpha: _isPressed ? 0.6 : 0.4),
+                blurRadius: _isPressed ? 8 : 6,
+                offset: _isPressed ? const Offset(0, 1) : const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              widget.label,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18 * s,
+                fontWeight: FontWeight.bold,
+                shadows: const [Shadow(color: Colors.black54, blurRadius: 2, offset: Offset(1, 1))],
+              ),
             ),
           ),
         ),

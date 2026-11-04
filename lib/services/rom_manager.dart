@@ -84,15 +84,19 @@ class RomManager {
       try {
         final item = GameItem.fromJson(jsonDecode(str));
         if (item.localRomPath != null && await File(item.localRomPath!).exists()) {
-          // Tự động bổ sung ảnh BÌA và INGAME nếu game cũ chưa có
-          if (item.coverUrl == null || item.inGamePreviewUrl == null || item.coverUrl!.isEmpty || item.inGamePreviewUrl!.isEmpty) {
+          // Tự động bổ sung ảnh BÌA và INGAME nếu game chưa có hoặc là tên mã ngắn (như mslug5)
+          final isShort = item.title.length <= 8 && !item.title.contains(' ');
+          final noImages = item.coverUrl == null || item.inGamePreviewUrl == null || item.coverUrl!.isEmpty || item.inGamePreviewUrl!.isEmpty;
+          final isRawCover = item.coverUrl != null && (item.coverUrl!.contains('.zip') || item.coverUrl!.endsWith('mslug5.png'));
+
+          if (noImages || isShort || isRawCover) {
             final fileName = File(item.localRomPath!).uri.pathSegments.last;
             final meta = RetroMetadataService.resolveMetadata(
               rawFileName: fileName,
               defaultConsole: item.console,
             );
             final enriched = item.copyWith(
-              title: (item.title == fileName || item.title.endsWith('.zip')) ? (meta['title'] ?? item.title) : item.title,
+              title: meta['title'] ?? item.title,
               coverUrl: meta['cover'] ?? item.coverUrl,
               inGamePreviewUrl: meta['snap'] ?? item.inGamePreviewUrl,
               console: meta['console'] ?? item.console,

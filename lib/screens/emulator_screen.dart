@@ -372,30 +372,42 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
   Future<void> _loadGamepadSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final layoutVer = prefs.getInt('arcade_layout_version') ?? 1;
+      if (layoutVer < 3) {
+        // Tự động dọn dẹp các vị trí cũ bị đè/lập nút
+        await prefs.remove('arcade_btn_positions_land');
+        await prefs.remove('arcade_btn_positions_port');
+        await prefs.setInt('arcade_layout_version', 3);
+        _customButtonsLand = null;
+        _customButtonsPort = null;
+      }
+
       setState(() {
         _buttonScale = prefs.getDouble('arcade_btn_scale') ?? 1.0;
         _buttonLayout = prefs.getString('arcade_btn_layout') ?? 'arcade6';
         _joystickType = prefs.getString('arcade_joy_type') ?? 'analog360';
         _joystickSensitivity = prefs.getString('arcade_joy_sens') ?? 'normal';
 
-        final landJson = prefs.getString('arcade_btn_positions_land');
-        if (landJson != null) {
-          try {
-            final map = jsonDecode(landJson) as Map<String, dynamic>;
-            _customButtonsLand = map.map(
-              (k, v) => MapEntry(k, Offset((v[0] as num).toDouble(), (v[1] as num).toDouble())),
-            );
-          } catch (_) {}
-        }
+        if (layoutVer >= 3) {
+          final landJson = prefs.getString('arcade_btn_positions_land');
+          if (landJson != null) {
+            try {
+              final map = jsonDecode(landJson) as Map<String, dynamic>;
+              _customButtonsLand = map.map(
+                (k, v) => MapEntry(k, Offset((v[0] as num).toDouble(), (v[1] as num).toDouble())),
+              );
+            } catch (_) {}
+          }
 
-        final portJson = prefs.getString('arcade_btn_positions_port');
-        if (portJson != null) {
-          try {
-            final map = jsonDecode(portJson) as Map<String, dynamic>;
-            _customButtonsPort = map.map(
-              (k, v) => MapEntry(k, Offset((v[0] as num).toDouble(), (v[1] as num).toDouble())),
-            );
-          } catch (_) {}
+          final portJson = prefs.getString('arcade_btn_positions_port');
+          if (portJson != null) {
+            try {
+              final map = jsonDecode(portJson) as Map<String, dynamic>;
+              _customButtonsPort = map.map(
+                (k, v) => MapEntry(k, Offset((v[0] as num).toDouble(), (v[1] as num).toDouble())),
+              );
+            } catch (_) {}
+          }
         }
       });
     } catch (e) {

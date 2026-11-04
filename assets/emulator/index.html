@@ -271,8 +271,8 @@
         'RIGHT': [{ key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 }],
         'A': [{ key: 'z', code: 'KeyZ', keyCode: 90 }],
         'B': [{ key: 'x', code: 'KeyX', keyCode: 88 }],
-        'C': [{ key: 'c', code: 'KeyC', keyCode: 67 }, { key: 'a', code: 'KeyA', keyCode: 65 }],
-        'D': [{ key: 'v', code: 'KeyV', keyCode: 86 }, { key: 's', code: 'KeyS', keyCode: 83 }],
+        'C': [{ key: 'c', code: 'KeyC', keyCode: 67 }],
+        'D': [{ key: 'v', code: 'KeyV', keyCode: 86 }],
         'SELECT': [
           { key: 'Shift', code: 'ShiftRight', keyCode: 16 }
         ],
@@ -332,20 +332,24 @@
       } else {
         // Arcade / Neo Geo / SNES Mode
         // 1. Gửi trực tiếp vào simulateInput của GameManager (Bỏ qua hoàn toàn hotkey bàn phím)
+        let handledBySimulate = false;
         const pIndex = player - 1;
         const btnId = EJS_BUTTON_IDS[btnName.toUpperCase()];
         if (btnId !== undefined && window.EJS_emulator && window.EJS_emulator.gameManager && typeof window.EJS_emulator.gameManager.simulateInput === 'function') {
           try {
             window.EJS_emulator.gameManager.simulateInput(pIndex, btnId, isPressed ? 1 : 0);
+            handledBySimulate = true;
           } catch(e) {}
         }
 
-        // 2. Dự phòng qua bàn phím an toàn (Chỉ gửi Enter/Shift, tuyệt đối không gửi phím số 1 gây Save Slot)
-        const pMap = ARCADE_KEY_MAP[player] || ARCADE_KEY_MAP[1];
-        const keys = pMap[btnName.toUpperCase()];
-        if (keys && keys.length > 0) {
-          for (let i = 0; i < keys.length; i++) {
-            dispatchKey(keys[i], isPressed);
+        // 2. Dự phòng qua bàn phím nếu simulateInput chưa sẵn sàng hoặc cho SELECT / START
+        if (!handledBySimulate || btnName === 'SELECT' || btnName === 'START') {
+          const pMap = ARCADE_KEY_MAP[player] || ARCADE_KEY_MAP[1];
+          const keys = pMap[btnName.toUpperCase()];
+          if (keys && keys.length > 0) {
+            for (let i = 0; i < keys.length; i++) {
+              dispatchKey(keys[i], isPressed);
+            }
           }
         }
       }

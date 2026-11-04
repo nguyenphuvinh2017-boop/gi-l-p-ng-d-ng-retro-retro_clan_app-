@@ -65,16 +65,21 @@ class HomeScreenState extends State<HomeScreen> {
     final List<GameItem> updatedList = [];
 
     for (var g in games) {
-      if (g.coverUrl == null || g.inGamePreviewUrl == null) {
+      final isShort = g.title.length <= 8 && !g.title.contains(' ');
+      final noImages = g.coverUrl == null || g.inGamePreviewUrl == null || g.coverUrl!.isEmpty || g.inGamePreviewUrl!.isEmpty;
+      final isRawCover = g.coverUrl != null && (g.coverUrl!.contains('.zip') || g.coverUrl!.endsWith('mslug5.png'));
+
+      if (noImages || isShort || isRawCover) {
+        final raw = g.localRomPath != null ? g.localRomPath!.split(RegExp(r'[/\\]')).last : g.title;
         final meta = RetroMetadataService.resolveMetadata(
-          rawFileName: g.title,
+          rawFileName: raw,
           defaultConsole: g.console,
         );
         final updated = g.copyWith(
           title: meta['title'] ?? g.title,
           console: meta['console'] ?? g.console,
-          coverUrl: meta['cover'],
-          inGamePreviewUrl: meta['snap'],
+          coverUrl: meta['cover'] ?? g.coverUrl,
+          inGamePreviewUrl: meta['snap'] ?? g.inGamePreviewUrl,
         );
         updatedList.add(updated);
         await RomManager.saveGameToLibrary(updated);

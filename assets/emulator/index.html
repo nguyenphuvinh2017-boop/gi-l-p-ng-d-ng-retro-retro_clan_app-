@@ -123,12 +123,32 @@
       z-index: 100;
       display: none;
     }
+    /* Bộ lọc đồ họa CRT Scanlines hoài cổ thập niên 90 */
+    #crt-scanlines {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 40;
+      display: none;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.28) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.04));
+      background-size: 100% 3px, 6px 100%;
+      box-shadow: inset 0 0 35px rgba(0, 0, 0, 0.75);
+    }
+    #crt-scanlines.active {
+      display: block !important;
+    }
   </style>
   <script src="jsnes.min.js"></script>
 </head>
 <body>
   <div id="viewport">
     <div id="status-overlay">Sẵn sàng</div>
+
+    <!-- Lớp phủ CRT Scanlines hoài cổ -->
+    <div id="crt-scanlines"></div>
 
     <!-- Hộp thông báo nạp game -->
     <div id="loading-box">
@@ -418,6 +438,47 @@
 
     window.setSpeed = function(multiplier) {
       speedRate = multiplier || 1;
+      if (window.EJS_emulator) {
+        try {
+          if (typeof window.EJS_emulator.setSpeed === 'function') {
+            window.EJS_emulator.setSpeed(speedRate);
+          } else if (window.EJS_emulator.gameManager && typeof window.EJS_emulator.gameManager.setSpeed === 'function') {
+            window.EJS_emulator.gameManager.setSpeed(speedRate);
+          }
+        } catch(e) {}
+      }
+    };
+
+    window.toggleCrtFilter = function(enabled) {
+      const el = document.getElementById('crt-scanlines');
+      if (el) {
+        if (enabled) el.classList.add('active');
+        else el.classList.remove('active');
+      }
+    };
+
+    window.rewindGame = function() {
+      if (window.EJS_emulator) {
+        try {
+          if (typeof window.EJS_emulator.rewind === 'function') {
+            window.EJS_emulator.rewind();
+          } else if (typeof window.EJS_emulator.loadState === 'function') {
+            window.EJS_emulator.loadState(9); // Quick Rewind Slot
+          }
+        } catch(e) {}
+      }
+    };
+
+    window.applyCheatCode = function(cheatCode) {
+      if (window.EJS_emulator && window.EJS_emulator.gameManager) {
+        try {
+          if (typeof window.EJS_emulator.gameManager.addCheat === 'function') {
+            window.EJS_emulator.gameManager.addCheat(cheatCode);
+            return true;
+          }
+        } catch(e) {}
+      }
+      return false;
     };
 
     window.setP2Status = function(connected) {
@@ -432,16 +493,44 @@
       }
     };
 
-    // Khởi chạy lõi Arcade (Neo Geo / MAME) với CDN EmulatorJS chính thức 4.2.3
+    // Khởi chạy lõi đa hệ máy (Tương thích toàn bộ 12 hệ máy) với CDN EmulatorJS
     function startEmulatorJs(coreType, romUrl, gameTitle) {
       isEmulatorJsMode = true;
       canvas.style.display = 'none';
       gameContainer.classList.add('active');
       gameContainer.style.setProperty('display', 'block', 'important');
 
-      loadingText.innerText = `Đang nạp dữ liệu Arcade & Neo Geo (${gameTitle})...\nVui lòng đợi giây lát`;
+      // Ánh xạ chính xác tên lõi sang core của EmulatorJS
+      let mappedCore = (coreType || 'arcade').toLowerCase();
+      let isArcade = false;
 
-      // Lấy tên định danh ngắn của ROM (ví dụ 'neobombe' thay vì 'Neo Bomberman')
+      if (mappedCore === 'arcade' || mappedCore === 'neogeo') {
+        mappedCore = 'arcade';
+        isArcade = true;
+      } else if (mappedCore === 'mame') {
+        mappedCore = 'mame2003plus';
+        isArcade = true;
+      } else if (mappedCore === 'genesis' || mappedCore === 'sega' || mappedCore === 'megadrive') {
+        mappedCore = 'segaMD';
+      } else if (mappedCore === 'psx' || mappedCore === 'ps1') {
+        mappedCore = 'psx';
+      } else if (mappedCore === 'gb' || mappedCore === 'gbc') {
+        mappedCore = 'gb';
+      } else if (mappedCore === 'snes') {
+        mappedCore = 'snes';
+      } else if (mappedCore === 'gba') {
+        mappedCore = 'gba';
+      } else if (mappedCore === 'nds') {
+        mappedCore = 'nds';
+      } else if (mappedCore === 'psp') {
+        mappedCore = 'psp';
+      } else if (mappedCore === 'n64') {
+        mappedCore = 'n64';
+      }
+
+      loadingText.innerText = `Đang nạp dữ liệu ${coreType.toUpperCase()} (${gameTitle})...\nVui lòng đợi giây lát`;
+
+      // Lấy tên định danh ngắn của ROM
       let rawRomName = romUrl.split('/').pop().split('?')[0].replace(/\.[^/.]+$/, '').toLowerCase();
       if (rawRomName.includes('neobombe') || rawRomName.includes('bomber')) {
         rawRomName = 'neobombe';
@@ -449,27 +538,29 @@
 
       window.EJS_DEBUG_XX = true;
       window.EJS_player = '#game-container';
-      window.EJS_core = (coreType === 'arcade' || coreType === 'neogeo' || coreType === 'mame') ? 'arcade' : coreType;
+      window.EJS_core = mappedCore;
       window.EJS_gameUrl = romUrl;
-      window.EJS_gameName = rawRomName; // Bắt buộc là tên driver chuẩn 'neobombe' để FBNeo nạp game
-      window.EJS_pathtodata = '/data/'; // Sử dụng Same-Origin proxy để tương thích 100% với iOS Safari & Android
+      window.EJS_gameName = rawRomName;
+      window.EJS_pathtodata = '/data/';
       window.EJS_startOnLoaded = true;
       window.EJS_color = '#D4AF37';
-      window.EJS_threads = false; // Đảm bảo tương thích 100% không yêu cầu SharedArrayBuffer
+      window.EJS_threads = false;
       window.EJS_hideSettings = true;
       window.EJS_Buttons = false;
 
-      // Giữ nguyên archive neogeo.zip không giải nén cho FBNeo
-      window.EJS_dontExtractBIOS = true;
-      window.EJS_biosUrl = '/neogeo.zip';
-      window.EJS_gameParentUrl = '/neogeo.zip';
-      window.EJS_externalFiles = {
-        "neogeo.zip": "/neogeo.zip",
-        "/neogeo.zip": "/neogeo.zip"
-      };
+      // Chỉ nạp BIOS Neo Geo cho hệ máy Arcade / Neo Geo (FBNeo)
+      if (isArcade) {
+        window.EJS_dontExtractBIOS = true;
+        window.EJS_biosUrl = '/neogeo.zip';
+        window.EJS_gameParentUrl = '/neogeo.zip';
+        window.EJS_externalFiles = {
+          "neogeo.zip": "/neogeo.zip",
+          "/neogeo.zip": "/neogeo.zip"
+        };
+      }
 
       window.EJS_ready = function() {
-        loadingText.innerText = 'Đang khởi động hệ máy Neo Geo...';
+        loadingText.innerText = `Đang khởi động hệ máy ${coreType.toUpperCase()}...`;
         if (window.EJS_emulator) {
           try {
             if (window.EJS_emulator.menu && typeof window.EJS_emulator.menu.close === 'function') {

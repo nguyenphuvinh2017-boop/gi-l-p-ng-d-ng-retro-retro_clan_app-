@@ -220,14 +220,35 @@ class RetroMetadataService {
       }
     }
 
-    // 2. Tạo URL tự động từ Libretro Thumbnails nếu là hệ máy phổ biến
+    // 2. Tạo URL tự động từ Libretro Thumbnails cho toàn bộ 12 hệ máy
     String consoleFolder = 'Nintendo_-_Nintendo_Entertainment_System';
-    if (defaultConsole == 'snes') {
+    final c = defaultConsole.toLowerCase();
+    if (c == 'snes') {
       consoleFolder = 'Nintendo_-_Super_Nintendo_Entertainment_System';
-    } else if (defaultConsole == 'gba') {
+    } else if (c == 'gba') {
       consoleFolder = 'Nintendo_-_Game_Boy_Advance';
-    } else if (defaultConsole == 'arcade' || defaultConsole == 'neogeo') {
+    } else if (c == 'gbc') {
+      consoleFolder = 'Nintendo_-_Game_Boy_Color';
+    } else if (c == 'gb') {
+      consoleFolder = 'Nintendo_-_Game_Boy';
+    } else if (c == 'nds') {
+      consoleFolder = 'Nintendo_-_Nintendo_DS';
+    } else if (c == 'psx' || c == 'ps1') {
+      consoleFolder = 'Sony_-_PlayStation';
+    } else if (c == 'psp') {
+      consoleFolder = 'Sony_-_PlayStation_Portable';
+    } else if (c == 'ps2') {
+      consoleFolder = 'Sony_-_PlayStation_2';
+    } else if (c == 'n64') {
+      consoleFolder = 'Nintendo_-_Nintendo_64';
+    } else if (c == 'genesis' || c == 'sega') {
+      consoleFolder = 'Sega_-_Mega_Drive_-_Genesis';
+    } else if (c == 'arcade' || c == 'neogeo') {
       consoleFolder = 'SNK_-_Neo_Geo';
+    } else if (c == 'mame') {
+      consoleFolder = 'MAME';
+    } else if (c == '3ds') {
+      consoleFolder = 'Nintendo_-_Nintendo_3DS';
     }
 
     final formattedTitle = rawFileName.replaceAll(RegExp(r'\.[^.]+$'), '').trim();

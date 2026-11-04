@@ -157,6 +157,76 @@ class RomManager {
     await saveGameToLibrary(updated);
   }
 
+  static final Set<String> supportedExtensions = {
+    'nes', 'smc', 'sfc', 'fig', 'gba', 'gbc', 'gb', 'nds',
+    'iso', 'chd', 'pbp', 'cso', 'bin', 'img', 'cue',
+    'z64', 'n64', 'v64', 'md', 'gen', 'smd', '3ds', 'cia',
+    'zip', '7z', 'neo'
+  };
+
+  static String detectConsole(String extension, String fileName) {
+    final e = extension.toLowerCase();
+    final fn = fileName.toLowerCase();
+    if (e == 'nes') return 'nes';
+    if (e == 'smc' || e == 'sfc' || e == 'fig') return 'snes';
+    if (e == 'gba') return 'gba';
+    if (e == 'gbc') return 'gbc';
+    if (e == 'gb') return 'gb';
+    if (e == 'nds') return 'nds';
+    if (e == 'cso') return 'psp';
+    if (e == 'pbp') return fn.contains('psp') ? 'psp' : 'psx';
+    if (e == 'iso' || e == 'cue' || e == 'chd' || e == 'bin' || e == 'img') {
+      if (fn.contains('psp')) return 'psp';
+      if (fn.contains('ps2')) return 'ps2';
+      return 'psx';
+    }
+    if (e == 'z64' || e == 'n64' || e == 'v64') return 'n64';
+    if (e == 'md' || e == 'gen' || e == 'smd') return 'genesis';
+    if (e == '3ds' || e == 'cia') return '3ds';
+    if (e == 'neo') return 'arcade';
+    return 'nes';
+  }
+
+  /// Quét đệ quy toàn bộ thư mục trên thiết bị để tìm và tự động nạp tất cả game
+  static Future<List<GameItem>> scanDirectoryForRoms(
+    String dirPath, {
+    Function(int current, int total, String currentFile)? onProgress,
+  }) async {
+    final rootDir = Directory(dirPath);
+    if (!await rootDir.exists()) return [];
+
+    final List<File> candidateFiles = [];
+    try {
+      await for (final entity in rootDir.list(recursive: true, followLinks: false)) {
+        if (entity is File) {
+          final ext = entity.uri.pathSegments.last.split('.').last.toLowerCase();
+          if (supportedExtensions.contains(ext)) {
+            final fn = entity.uri.pathSegments.last.toLowerCase();
+            if (!fn.contains('bios') && !fn.startsWith('.')) {
+              candidateFiles.add(entity);
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    final List<GameItem> importedGames = [];
+    final total = candidateFiles.length;
+
+    for (int i = 0; i < candidateFiles.length; i++) {
+      final f = candidateFiles[i];
+      onProgress?.call(i + 1, total, f.uri.pathSegments.last);
+      try {
+        final item = await importFileFromDevice(f.path);
+        if (item != null) {
+          importedGames.add(item);
+        }
+      } catch (_) {}
+    }
+
+    return importedGames;
+  }
+
   /// Thêm file game được người dùng chọn từ máy (.zip, .nes, .gba, .smc, .sfc...)
   static Future<GameItem?> importFileFromDevice(String sourceFilePath) async {
     try {
@@ -169,11 +239,11 @@ class RomManager {
       final ext = originalFileName.split('.').last.toLowerCase();
 
       String? targetRomPath;
-      String console = 'nes';
+      String console = detectConsole(ext, originalFileName);
       String title = originalFileName;
 
       // Xử lý file nén ZIP
-      if (ext == 'zip' && bytes.length > 4 && bytes[0] == 0x50 && bytes[1] == 0x4B) {
+      if ((ext == 'zip' || ext == '7z') && bytes.length > 4 && bytes[0] == 0x50 && bytes[1] == 0x4B) {
         final archive = ZipDecoder().decodeBytes(bytes);
         ArchiveFile? romEntry;
         int consoleRomCount = 0;
@@ -181,12 +251,10 @@ class RomManager {
         for (var file in archive) {
           if (file.isFile) {
             final fExt = file.name.split('.').last.toLowerCase();
-            if (['nes', 'gba', 'gbc', 'gb', 'smc', 'sfc', 'md', 'gen'].contains(fExt)) {
+            if (supportedExtensions.contains(fExt) && fExt != 'zip' && fExt != '7z') {
               romEntry = file;
               consoleRomCount++;
-              console = (fExt == 'smc' || fExt == 'sfc')
-                  ? 'snes'
-                  : ((fExt == 'md' || fExt == 'gen') ? 'sega' : fExt);
+              console = detectConsole(fExt, file.name);
             }
           }
         }
@@ -205,12 +273,11 @@ class RomManager {
           final targetFile = File('${romDir.path}/$originalFileName');
           await targetFile.writeAsBytes(bytes);
           targetRomPath = targetFile.path;
-          console = 'arcade';
+          if (console == 'nes') console = 'arcade';
           title = originalFileName.replaceAll(RegExp(r'\.[^.]+$'), '');
         }
       } else {
         // File ROM đơn lẻ (.nes, .gba, .sfc...)
-        console = ext == 'smc' || ext == 'sfc' ? 'snes' : ext;
         final targetFile = File('${romDir.path}/$originalFileName');
         await targetFile.writeAsBytes(bytes);
         targetRomPath = targetFile.path;

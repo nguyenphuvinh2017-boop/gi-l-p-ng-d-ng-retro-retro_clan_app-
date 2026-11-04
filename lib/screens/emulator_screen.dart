@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import '../models/game_item.dart';
 import '../services/clan_netplay_service.dart';
 import '../widgets/arcade_gamepad.dart';
 import '../widgets/arcade_settings_dialog.dart';
+import '../widgets/cheat_manager_dialog.dart';
 
 class EmulatorScreen extends StatefulWidget {
   final GameItem game;
@@ -57,6 +59,12 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
   // Chế độ kéo thả chỉnh nút trực quan
   bool _isCustomizingLayout = false;
 
+  // Tính năng nâng cao tương tự Retrofun
+  bool _isAutoGrindActive = false;
+  Timer? _autoGrindTimer;
+  bool _isCrtFilterActive = false;
+  Timer? _rewindAutoSaveTimer;
+
   @override
   void initState() {
     super.initState();
@@ -68,6 +76,9 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
     }
     _loadGamepadSettings();
     _startLocalServerAndEngine();
+    _rewindAutoSaveTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      _runJs("if(window.EJS_emulator && typeof window.EJS_emulator.saveState === 'function') window.EJS_emulator.saveState(9);");
+    });
   }
 
   @override
@@ -82,6 +93,8 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
     WidgetsBinding.instance.removeObserver(this);
     _localServer?.close(force: true);
     _proxyHttpClient?.close(force: true);
+    _autoGrindTimer?.cancel();
+    _rewindAutoSaveTimer?.cancel();
     try {
       _winController?.dispose();
     } catch (_) {}
@@ -354,9 +367,120 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
 
   void _toggleSpeed() {
     setState(() {
-      _speedMultiplier = _speedMultiplier == 1 ? 2 : (_speedMultiplier == 2 ? 3 : 1);
+      _speedMultiplier = _speedMultiplier == 1 ? 2 : (_speedMultiplier == 2 ? 4 : (_speedMultiplier == 4 ? 8 : 1));
     });
     _runJs("window.setSpeed($_speedMultiplier);");
+  }
+
+  void _toggleCrtFilter() async {
+    setState(() {
+      _isCrtFilterActive = !_isCrtFilterActive;
+    });
+    _runJs("window.toggleCrtFilter($_isCrtFilterActive);");
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('arcade_crt_filter', _isCrtFilterActive);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF131C31),
+        duration: const Duration(milliseconds: 1400),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: Color(0xFFD4AF37)),
+        ),
+        content: Text(_isCrtFilterActive ? '📺 Đã BẬT Bộ lọc tivi CRT Scanlines cổ điển' : '📺 Đã TẮT Bộ lọc CRT'),
+      ),
+    );
+  }
+
+  void _toggleAutoGrind() {
+    setState(() {
+      _isAutoGrindActive = !_isAutoGrindActive;
+    });
+    _autoGrindTimer?.cancel();
+    if (_isAutoGrindActive) {
+      bool st = false;
+      _autoGrindTimer = Timer.periodic(const Duration(milliseconds: 90), (_) {
+        st = !st;
+        _sendInput(1, 'A', st);
+      });
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFF131C31),
+          duration: const Duration(milliseconds: 1600),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: const BorderSide(color: Color(0xFF00FF88)),
+          ),
+          content: const Row(
+            children: [
+              Icon(Icons.smart_toy, color: Color(0xFF00FF88), size: 20),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('🤖 Auto-Grind: Đang tự động nhấp phím A (Cày cấp & thoại)!'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      _sendInput(1, 'A', false);
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xFF131C31),
+          duration: Duration(milliseconds: 1200),
+          behavior: SnackBarBehavior.floating,
+          content: Text('🛑 Đã TẮT Auto-Grind'),
+        ),
+      );
+    }
+  }
+
+  void _triggerRewind() {
+    _runJs("""
+      if (typeof window.rewindGame === 'function') {
+        window.rewindGame();
+      } else if (window.EJS_emulator && typeof window.EJS_emulator.loadState === 'function') {
+        window.EJS_emulator.loadState(9);
+      }
+    """);
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF131C31),
+        duration: const Duration(milliseconds: 1400),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: Color(0xFF00E5FF)),
+        ),
+        content: const Row(
+          children: [
+            Icon(Icons.fast_rewind, color: Color(0xFF00E5FF), size: 20),
+            SizedBox(width: 8),
+            Text('⏪ Đã tua ngược thời gian 10 giây (Rewind)!'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openCheatDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => CheatManagerDialog(
+        gameTitle: widget.game.title,
+        console: widget.game.console,
+        onApplyCheat: (code, enabled) {
+          _runJs("if(typeof window.applyCheatCode === 'function') window.applyCheatCode('$code');");
+        },
+      ),
+    );
   }
 
   void _toggleRotation() {
@@ -451,6 +575,10 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
         _buttonLayout = prefs.getString('arcade_btn_layout') ?? 'arcade6';
         _joystickType = prefs.getString('arcade_joy_type') ?? 'dpadSquare4';
         _joystickSensitivity = prefs.getString('arcade_joy_sens') ?? 'normal';
+        _isCrtFilterActive = prefs.getBool('arcade_crt_filter') ?? false;
+        if (_isCrtFilterActive) {
+          _runJs("window.toggleCrtFilter(true);");
+        }
 
         if (layoutVer >= 3) {
           final landJson = prefs.getString('arcade_btn_positions_land');
@@ -563,6 +691,12 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
         onRotate: _toggleRotation,
         onOpenLan: _showClanRoomDialog,
         onVolumeChanged: (vol) => _runJs("if(window.EJS_emulator) window.EJS_emulator.setVolume($vol);"),
+        isCrtFilterActive: _isCrtFilterActive,
+        onToggleCrtFilter: (val) => _toggleCrtFilter(),
+        isAutoGrindActive: _isAutoGrindActive,
+        onToggleAutoGrind: (val) => _toggleAutoGrind(),
+        onRewind: _triggerRewind,
+        onOpenCheat: _openCheatDialog,
       ),
     );
   }
@@ -717,6 +851,26 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.bolt, color: Color(0xFFFFD700)),
+            tooltip: 'Mã Cheat (Cheat Engine)',
+            onPressed: _openCheatDialog,
+          ),
+          IconButton(
+            icon: Icon(Icons.tv, color: _isCrtFilterActive ? const Color(0xFF00FF88) : Colors.white70),
+            tooltip: 'Bộ lọc tivi CRT',
+            onPressed: _toggleCrtFilter,
+          ),
+          IconButton(
+            icon: const Icon(Icons.fast_rewind, color: Color(0xFF00E5FF)),
+            tooltip: 'Tua ngược 10 giây (Rewind)',
+            onPressed: _triggerRewind,
+          ),
+          IconButton(
+            icon: Icon(Icons.smart_toy, color: _isAutoGrindActive ? const Color(0xFF00FF88) : Colors.white70),
+            tooltip: 'Tự động cày cuốc (Auto-Grind)',
+            onPressed: _toggleAutoGrind,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white70),
             tooltip: 'Tải lại',

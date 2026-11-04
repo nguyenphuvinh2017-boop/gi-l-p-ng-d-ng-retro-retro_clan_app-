@@ -38,9 +38,16 @@ class HomeScreenState extends State<HomeScreen> {
     {'label': 'NES', 'key': 'nes'},
     {'label': 'SNES', 'key': 'snes'},
     {'label': 'GBA', 'key': 'gba'},
+    {'label': 'GBC/GB', 'key': 'gbc'},
+    {'label': 'NDS', 'key': 'nds'},
+    {'label': 'PS1 (PSX)', 'key': 'psx'},
+    {'label': 'PSP', 'key': 'psp'},
     {'label': 'NEOGEO', 'key': 'arcade'},
     {'label': 'MAME', 'key': 'mame'},
     {'label': 'SEGA', 'key': 'genesis'},
+    {'label': 'N64', 'key': 'n64'},
+    {'label': 'PS2', 'key': 'ps2'},
+    {'label': '3DS', 'key': '3ds'},
   ];
 
   final List<Map<String, String>> _filters = [
@@ -105,9 +112,18 @@ class HomeScreenState extends State<HomeScreen> {
       list = list.where((g) => g.title.toLowerCase().contains(q) || g.console.toLowerCase().contains(q)).toList();
     }
 
-    // Lọc theo hệ máy
+    // Lọc theo hệ máy (Hỗ trợ toàn diện 12 hệ máy)
     if (_selectedSystem != 'ALL') {
-      list = list.where((g) => g.console.toLowerCase() == _selectedSystem.toLowerCase()).toList();
+      final s = _selectedSystem.toLowerCase();
+      if (s == 'gbc') {
+        list = list.where((g) => g.console.toLowerCase() == 'gbc' || g.console.toLowerCase() == 'gb').toList();
+      } else if (s == 'psx') {
+        list = list.where((g) => g.console.toLowerCase() == 'psx' || g.console.toLowerCase() == 'ps1').toList();
+      } else if (s == 'genesis') {
+        list = list.where((g) => g.console.toLowerCase() == 'genesis' || g.console.toLowerCase() == 'sega').toList();
+      } else {
+        list = list.where((g) => g.console.toLowerCase() == s).toList();
+      }
     }
 
     // Lọc theo trạng thái
@@ -133,8 +149,8 @@ class HomeScreenState extends State<HomeScreen> {
 
       final files = await FilePicker.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['zip', 'nes', 'gba', 'gb', 'gbc', 'smc', 'sfc', 'bin', 'neo'],
-        dialogTitle: 'Chọn file game (.zip, .nes, .gba...) tải từ Retrostic',
+        allowedExtensions: RomManager.supportedExtensions.toList(),
+        dialogTitle: 'Chọn file game (.zip, .nes, .gba, .nds, .iso...)',
       );
 
       if (files.isNotEmpty && files.first.path != null) {
@@ -207,6 +223,116 @@ class HomeScreenState extends State<HomeScreen> {
         setState(() {
           _isImporting = false;
         });
+      }
+    }
+  }
+
+  /// Quét tự động toàn bộ thư mục trên máy để nạp hàng loạt ROM cho 12 hệ máy
+  Future<void> scanAndImportFolder() async {
+    try {
+      final selectedDirectory = await FilePicker.getDirectoryPath(
+        dialogTitle: 'Chọn thư mục chứa ROMs để quét tự động',
+      );
+
+      if (selectedDirectory == null || selectedDirectory.isEmpty) return;
+
+      int cur = 0;
+      int tot = 0;
+      String currentFileName = '';
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => StatefulBuilder(
+          builder: (context, setDlgState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF131C31),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: Color(0xFF00E5FF), width: 1.2),
+              ),
+              title: const Row(
+                children: [
+                  Icon(Icons.folder_copy, color: Color(0xFF00E5FF)),
+                  SizedBox(width: 10),
+                  Text('Đang quét thư mục ROM...', style: TextStyle(color: Colors.white, fontSize: 16)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Hệ thống đang tự động dò tìm và phân loại 12 hệ máy...',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  LinearProgressIndicator(
+                    value: tot > 0 ? (cur / tot).clamp(0.0, 1.0) : null,
+                    backgroundColor: Colors.white12,
+                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF00E5FF)),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    tot > 0 ? 'Đã tìm thấy: $cur / $tot game' : 'Đang duyệt cây thư mục...',
+                    style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  if (currentFileName.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      currentFileName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white38, fontSize: 11),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        ),
+      );
+
+      final imported = await RomManager.scanDirectoryForRoms(
+        selectedDirectory,
+        onProgress: (c, t, fn) {
+          cur = c;
+          tot = t;
+          currentFileName = fn;
+        },
+      );
+
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context); // Đóng hộp thoại
+      }
+
+      await refreshLibrary();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFF131C31),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: const BorderSide(color: Color(0xFF00E5FF)),
+            ),
+            content: Text(
+              '🎉 Đã quét xong! Đã nạp thành công ${imported.length} game vào thư viện.',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(backgroundColor: Colors.redAccent, content: Text('Lỗi khi quét thư mục: $e')),
+        );
       }
     }
   }
@@ -349,6 +475,8 @@ class HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(width: 8),
+          _buildTopIconBtn(Icons.drive_folder_upload, const Color(0xFF00E5FF), scanAndImportFolder, 'Quét thư mục ROM'),
+          const SizedBox(width: 6),
           _buildTopIconBtn(Icons.travel_explore, const Color(0xFF29A3FF), widget.onOpenStore, 'Kho Retrostic'),
           const SizedBox(width: 6),
           _buildTopIconBtn(Icons.wifi_tethering, const Color(0xFF00FF88), widget.onOpenLan, 'Sảnh Mạng LAN'),

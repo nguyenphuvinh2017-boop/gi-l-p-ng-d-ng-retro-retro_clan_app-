@@ -16,6 +16,12 @@ class ArcadeSettingsDialog extends StatefulWidget {
   final Function(double scale, String layout)? onLayoutChanged;
   final Function(String type, String sensitivity)? onJoystickChanged;
   final VoidCallback? onStartCustomizingLayout;
+  final bool isCrtFilterActive;
+  final ValueChanged<bool>? onToggleCrtFilter;
+  final bool isAutoGrindActive;
+  final ValueChanged<bool>? onToggleAutoGrind;
+  final VoidCallback? onRewind;
+  final VoidCallback? onOpenCheat;
 
   const ArcadeSettingsDialog({
     super.key,
@@ -33,6 +39,12 @@ class ArcadeSettingsDialog extends StatefulWidget {
     this.onLayoutChanged,
     this.onJoystickChanged,
     this.onStartCustomizingLayout,
+    this.isCrtFilterActive = false,
+    this.onToggleCrtFilter,
+    this.isAutoGrindActive = false,
+    this.onToggleAutoGrind,
+    this.onRewind,
+    this.onOpenCheat,
   });
 
   @override
@@ -55,6 +67,8 @@ class _ArcadeSettingsDialogState extends State<ArcadeSettingsDialog> {
   late String _buttonLayout;
   late String _joystickType;
   late String _joystickSensitivity;
+  late bool _isCrtFilter;
+  late bool _isAutoGrind;
 
   // Cài đặt Arcade Dip Switches
   String _arcadeDifficulty = 'Level 4 (Chuẩn)';
@@ -69,6 +83,8 @@ class _ArcadeSettingsDialogState extends State<ArcadeSettingsDialog> {
   @override
   void initState() {
     super.initState();
+    _isCrtFilter = widget.isCrtFilterActive;
+    _isAutoGrind = widget.isAutoGrindActive;
     _buttonPercent = ((widget.currentButtonScale - 0.4) / 0.8 * 100.0).clamp(1.0, 100.0);
 
 
@@ -221,7 +237,26 @@ class _ArcadeSettingsDialogState extends State<ArcadeSettingsDialog> {
                 Navigator.pop(context);
                 widget.onOpenLan();
               }),
-              _buildActionSquare('CHEAT CODE', Icons.terminal, _showCheatDialog),
+              _buildActionSquare('CHEAT ENGINE', Icons.bolt, () {
+                Navigator.pop(context);
+                if (widget.onOpenCheat != null) {
+                  widget.onOpenCheat!();
+                } else {
+                  _showCheatDialog();
+                }
+              }),
+              _buildActionSquare('TUA LÙI 10S', Icons.fast_rewind, () {
+                Navigator.pop(context);
+                widget.onRewind?.call();
+              }),
+              _buildActionSquare(_isCrtFilter ? 'CRT: BẬT' : 'BỘ LỌC CRT', Icons.tv, () {
+                setState(() => _isCrtFilter = !_isCrtFilter);
+                widget.onToggleCrtFilter?.call(_isCrtFilter);
+              }),
+              _buildActionSquare(_isAutoGrind ? 'CÀY: BẬT' : 'AUTO-GRIND', Icons.smart_toy, () {
+                setState(() => _isAutoGrind = !_isAutoGrind);
+                widget.onToggleAutoGrind?.call(_isAutoGrind);
+              }),
               _buildActionSquare('CHỈNH NÚT', Icons.tune, () {
                 Navigator.pop(context);
                 widget.onStartCustomizingLayout?.call();

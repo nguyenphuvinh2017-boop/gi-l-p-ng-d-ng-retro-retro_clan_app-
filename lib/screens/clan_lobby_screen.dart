@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/game_item.dart';
@@ -28,6 +29,7 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
   List<ClanRoomInfo> _discoveredRooms = [];
   final TextEditingController _manualIpController = TextEditingController();
   bool _isJoining = false;
+  String? _lastConnectedHostIp;
 
   @override
   void initState() {
@@ -41,9 +43,19 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
     await RomManager.ensureDefaultGames();
     await refreshGames();
 
-    if (_localIp.contains('.')) {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _lastConnectedHostIp = prefs.getString('last_clan_host_ip');
+      if (_lastConnectedHostIp != null && _lastConnectedHostIp!.isNotEmpty) {
+        _manualIpController.text = _lastConnectedHostIp!;
+        widget.clanService.lastKnownHostIp = _lastConnectedHostIp;
+        widget.clanService.scanSubnet(_lastConnectedHostIp);
+      }
+    } catch (_) {}
+
+    if (_manualIpController.text.isEmpty && _localIp.contains('.')) {
       final parts = _localIp.split('.');
-      if (parts.length == 4 && _manualIpController.text.isEmpty) {
+      if (parts.length == 4) {
         _manualIpController.text = '${parts[0]}.${parts[1]}.${parts[2]}.';
       }
     }
@@ -166,7 +178,12 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
         if (mounted) {
           setState(() {
             _isJoining = false;
+            _lastConnectedHostIp = cleanIp;
           });
+          SharedPreferences.getInstance().then((p) {
+            p.setString('last_clan_host_ip', cleanIp);
+            widget.clanService.lastKnownHostIp = cleanIp;
+          }).catchError((_) {});
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -550,6 +567,46 @@ class ClanLobbyScreenState extends State<ClanLobbyScreen> with SingleTickerProvi
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_lastConnectedHostIp != null && _lastConnectedHostIp!.isNotEmpty) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF131D33),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.6), width: 1.2),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.bolt, color: Color(0xFF00E5FF), size: 24),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Máy chủ vừa kết nối gần nhất:', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                        Text(
+                          _lastConnectedHostIp!,
+                          style: const TextStyle(color: Color(0xFF00E5FF), fontWeight: FontWeight.bold, fontSize: 14, fontFamily: 'monospace'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00C853),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    icon: const Icon(Icons.play_arrow, size: 16, color: Colors.white),
+                    label: const Text('Vào ngay', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 12)),
+                    onPressed: _isJoining ? null : () => _joinHost(_lastConnectedHostIp!),
+                  ),
+                ],
+              ),
+            ),
+          ],
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

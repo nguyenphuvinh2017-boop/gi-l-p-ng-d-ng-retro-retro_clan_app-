@@ -29,7 +29,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   String _joystickType = 'dpadSquare4'; // 'dpadSquare4' (ô vuông) hoặc 'analog360'
   String _joystickSensitivity = 'normal';
   bool _isEditMode = false;
-  Uint8List? _latestScreenFrame;
+  final ValueNotifier<Uint8List?> _screenFrameNotifier = ValueNotifier<Uint8List?>(null);
 
   Map<String, Offset>? _customButtonsLand;
   Map<String, Offset>? _customButtonsPort;
@@ -40,11 +40,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
     _loadGamepadSettings();
 
     widget.clanService.onScreenFrameReceived = (bytes) {
-      if (mounted) {
-        setState(() {
-          _latestScreenFrame = bytes;
-        });
-      }
+      _screenFrameNotifier.value = bytes;
     };
 
     widget.clanService.onClientDisconnected = () {
@@ -72,6 +68,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   void dispose() {
     widget.clanService.onScreenFrameReceived = null;
     widget.clanService.onClientDisconnected = null;
+    _screenFrameNotifier.dispose();
     super.dispose();
   }
 
@@ -135,9 +132,72 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
   void _quickPulseButton(String button) {
     HapticFeedback.heavyImpact();
     widget.clanService.sendClientInput(button, true);
-    Future.delayed(const Duration(milliseconds: 120), () {
+    Future.delayed(const Duration(milliseconds: 250), () {
       widget.clanService.sendClientInput(button, false);
     });
+  }
+
+  void _triggerStartP2() {
+    HapticFeedback.heavyImpact();
+    // Nạp xu trước (SELECT), sau đó kích hoạt START P2 để chắc chắn 100% xuất hiện nhân vật
+    widget.clanService.sendClientInput('SELECT', true);
+    Future.delayed(const Duration(milliseconds: 120), () {
+      widget.clanService.sendClientInput('SELECT', false);
+      Future.delayed(const Duration(milliseconds: 80), () {
+        widget.clanService.sendClientInput('START', true);
+        Future.delayed(const Duration(milliseconds: 300), () {
+          widget.clanService.sendClientInput('START', false);
+        });
+      });
+    });
+  }
+
+  Widget _buildLiveGameScreen({required double? height, required bool isLandscape}) {
+    return ValueListenableBuilder<Uint8List?>(
+      valueListenable: _screenFrameNotifier,
+      builder: (context, frameBytes, _) {
+        return Container(
+          height: height,
+          margin: EdgeInsets.symmetric(
+            horizontal: isLandscape ? 0 : 14,
+            vertical: isLandscape ? 6 : 2,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(isLandscape ? 10 : 12),
+            border: Border.all(color: const Color(0xFFD4AF37), width: 1.5),
+            boxShadow: const [
+              BoxShadow(color: Colors.black87, blurRadius: 8, offset: Offset(0, 2)),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: frameBytes != null
+              ? Image.memory(
+                  frameBytes,
+                  gaplessPlayback: true,
+                  filterQuality: FilterQuality.low,
+                  fit: BoxFit.contain,
+                )
+              : Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(color: Color(0xFF00E5FF), strokeWidth: 2),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Đang đồng bộ màn hình game từ máy chủ...',
+                        style: TextStyle(color: Colors.white70, fontSize: isLandscape ? 11 : 12),
+                      ),
+                    ],
+                  ),
+                ),
+        );
+      },
+    );
   }
 
   void _toggleJoystickType() {
@@ -322,43 +382,8 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
           ),
         ),
 
-        // Màn hình game phát trực tiếp từ máy chủ
-        Container(
-          height: 215,
-          margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFD4AF37), width: 1.5),
-            boxShadow: const [
-              BoxShadow(color: Colors.black54, blurRadius: 8, offset: Offset(0, 2)),
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: _latestScreenFrame != null
-              ? Image.memory(
-                  _latestScreenFrame!,
-                  gaplessPlayback: true,
-                  fit: BoxFit.contain,
-                )
-              : const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(color: Color(0xFF00E5FF), strokeWidth: 2),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'Đang đồng bộ màn hình game từ máy chủ...',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-        ),
+        // Màn hình game phát trực tiếp từ máy chủ (tách luồng mượt mà, không giật lag)
+        _buildLiveGameScreen(height: 215, isLandscape: false),
 
         // Thanh trượt căn chỉnh kích thước nút khi bật chỉnh vị trí
         if (_isEditMode) _buildEditModeBar(),
@@ -395,41 +420,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
         Center(
           child: AspectRatio(
             aspectRatio: 4 / 3,
-            child: Container(
-              margin: const EdgeInsets.symmetric(vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.black,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFD4AF37), width: 1.5),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black87, blurRadius: 10),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: _latestScreenFrame != null
-                  ? Image.memory(
-                      _latestScreenFrame!,
-                      gaplessPlayback: true,
-                      fit: BoxFit.contain,
-                    )
-                  : const Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(color: Color(0xFF00E5FF), strokeWidth: 2),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Đang đồng bộ màn hình game từ máy chủ...',
-                            style: TextStyle(color: Colors.white70, fontSize: 11),
-                          ),
-                        ],
-                      ),
-                    ),
-            ),
+            child: _buildLiveGameScreen(height: null, isLandscape: true),
           ),
         ),
 
@@ -503,7 +494,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
                   const SizedBox(width: 6),
                   // Nút Bắt đầu P2
                   InkWell(
-                    onTap: () => _quickPulseButton('START'),
+                    onTap: _triggerStartP2,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(

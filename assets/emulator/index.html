@@ -442,13 +442,37 @@
         }
       } else {
         // Arcade / Neo Geo / SNES Mode
-        // 1. Gửi trực tiếp vào simulateInput của GameManager
         const pIndex = player - 1;
         const btnId = EJS_BUTTON_IDS[btnName.toUpperCase()];
-        if (btnId !== undefined && window.EJS_emulator && window.EJS_emulator.gameManager && typeof window.EJS_emulator.gameManager.simulateInput === 'function') {
+        const val = isPressed ? 1 : 0;
+
+        if (btnId !== undefined && window.EJS_emulator && window.EJS_emulator.gameManager) {
+          const gm = window.EJS_emulator.gameManager;
           try {
-            window.EJS_emulator.gameManager.simulateInput(pIndex, btnId, isPressed ? 1 : 0);
+            if (typeof gm.simulateInput === 'function') {
+              gm.simulateInput(pIndex, btnId, val);
+            }
+            if (gm.functions && typeof gm.functions.simulateInput === 'function') {
+              gm.functions.simulateInput(pIndex, btnId, val);
+            }
+            const mod = gm.Module || window.EJS_emulator.Module;
+            if (mod && typeof mod.simulate_input === 'function') {
+              mod.simulate_input(pIndex, btnId, val);
+            }
           } catch(e) {}
+        }
+
+        // Đảm bảo nút START và SELECT được giữ ít nhất 220ms để lõi Arcade nhận đủ frame
+        if ((btnName.toUpperCase() === 'START' || btnName.toUpperCase() === 'SELECT') && isPressed) {
+          setTimeout(() => {
+            try {
+              if (window.EJS_emulator && window.EJS_emulator.gameManager) {
+                const gm = window.EJS_emulator.gameManager;
+                if (typeof gm.simulateInput === 'function') gm.simulateInput(pIndex, btnId, 0);
+                if (gm.functions && typeof gm.functions.simulateInput === 'function') gm.functions.simulateInput(pIndex, btnId, 0);
+              }
+            } catch(e) {}
+          }, 220);
         }
 
         // 2. Dispatch bàn phím song song để 100% core và hệ máy arcade đều nhận
@@ -634,6 +658,19 @@
 
     let screenFeedWs = null;
     let screenFeedInterval = null;
+    let isCapturingFrame = false;
+    let offscreenCanvas = null;
+    let offscreenCtx = null;
+
+    function getOffscreenCanvas() {
+      if (!offscreenCanvas) {
+        offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width = 320;
+        offscreenCanvas.height = 240;
+        offscreenCtx = offscreenCanvas.getContext('2d', { alpha: false });
+      }
+      return { canvas: offscreenCanvas, ctx: offscreenCtx };
+    }
 
     function startLiveScreenFeed() {
       stopLiveScreenFeed();
@@ -659,19 +696,31 @@
           return;
         }
 
+        if (isCapturingFrame) return;
+
         try {
           const cvs = document.querySelector('#game-container canvas') || 
                       document.getElementById('nes-canvas') || 
                       document.querySelector('canvas');
           if (!cvs || cvs.width === 0 || cvs.height === 0) return;
 
-          cvs.toBlob((blob) => {
-            if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
-              screenFeedWs.send(blob);
+          isCapturingFrame = true;
+          const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas();
+          // Downscale trực tiếp về 320x240 để siêu nhẹ (~3KB), không giật lag mạng
+          offCtx.drawImage(cvs, 0, 0, 320, 240);
+          offCvs.toBlob((blob) => {
+            try {
+              if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
+                screenFeedWs.send(blob);
+              }
+            } finally {
+              isCapturingFrame = false;
             }
-          }, 'image/jpeg', 0.55);
-        } catch(e) {}
-      }, 55);
+          }, 'image/jpeg', 0.50);
+        } catch(e) {
+          isCapturingFrame = false;
+        }
+      }, 50);
     }
 
     function stopLiveScreenFeed() {
@@ -683,12 +732,26 @@
         try { screenFeedWs.close(); } catch(e) {}
         screenFeedWs = null;
       }
+      isCapturingFrame = false;
     }
 
     window.setP2Status = function(connected) {
       p2Connected = connected;
       if (connected) {
         startLiveScreenFeed();
+        // Cắm kết nối thiết bị tay cầm vào Port 1 (Player 2) trên lõi Libretro
+        try {
+          const emu = window.EJS_emulator;
+          const gm = emu && emu.gameManager;
+          const mod = (gm && gm.Module) || (emu && emu.Module);
+          if (mod) {
+            if (typeof mod._retro_set_controller_port_device === 'function') {
+              mod._retro_set_controller_port_device(1, 1);
+            } else if (typeof mod.ccall === 'function') {
+              mod.ccall('retro_set_controller_port_device', null, ['number', 'number'], [1, 1]);
+            }
+          }
+        } catch(e) {}
       } else {
         stopLiveScreenFeed();
       }
@@ -747,6 +810,32 @@
 
       window.EJS_DEBUG_XX = true;
       window.EJS_player = '#game-container';
+      window.EJS_defaultControls = {
+        0: {
+          0: { value: 'x', value2: 'BUTTON_2' },
+          1: { value: 's', value2: 'BUTTON_4' },
+          2: { value: 'shift', value2: 'SELECT' },
+          3: { value: 'enter', value2: 'START' },
+          4: { value: 'up arrow', value2: 'DPAD_UP' },
+          5: { value: 'down arrow', value2: 'DPAD_DOWN' },
+          6: { value: 'left arrow', value2: 'DPAD_LEFT' },
+          7: { value: 'right arrow', value2: 'DPAD_RIGHT' },
+          8: { value: 'z', value2: 'BUTTON_1' },
+          9: { value: 'a', value2: 'BUTTON_3' }
+        },
+        1: {
+          0: { value: 'k', value2: 'BUTTON_2' },
+          1: { value: 'u', value2: 'BUTTON_4' },
+          2: { value: '6', value2: 'SELECT' },
+          3: { value: '2', value2: 'START' },
+          4: { value: 'w', value2: 'DPAD_UP' },
+          5: { value: 's', value2: 'DPAD_DOWN' },
+          6: { value: 'a', value2: 'DPAD_LEFT' },
+          7: { value: 'd', value2: 'DPAD_RIGHT' },
+          8: { value: 'j', value2: 'BUTTON_1' },
+          9: { value: 'i', value2: 'BUTTON_3' }
+        }
+      };
       window.EJS_core = mappedCore;
       window.EJS_gameUrl = romUrl;
       window.EJS_gameName = rawRomName;
@@ -788,6 +877,27 @@
       window.EJS_onGameStart = function() {
         loadingBox.style.display = 'none';
         if (window.EJS_emulator) {
+          try {
+            if (window.EJS_emulator.controls) {
+              window.EJS_emulator.controls[1] = {
+                0: { value: 75 },
+                1: { value: 85 },
+                2: { value: 54 },
+                3: { value: 50 },
+                4: { value: 87 },
+                5: { value: 83 },
+                6: { value: 65 },
+                7: { value: 68 },
+                8: { value: 74 },
+                9: { value: 73 }
+              };
+            }
+            const gm = window.EJS_emulator.gameManager;
+            const mod = (gm && gm.Module) || window.EJS_emulator.Module;
+            if (mod && typeof mod._retro_set_controller_port_device === 'function') {
+              mod._retro_set_controller_port_device(1, 1);
+            }
+          } catch(e) {}
           try {
             if (window.EJS_emulator.menu && typeof window.EJS_emulator.menu.close === 'function') {
               window.EJS_emulator.menu.close();

@@ -135,7 +135,7 @@ class ClanNetplayService {
           } else {
             _handleP2Connection(socket, _currentGameTitle);
           }
-        } else if (request.uri.path == '/status' || request.uri.path == '/info') {
+        } else if (request.uri.path.startsWith('/status') || request.uri.path.startsWith('/info')) {
           request.response.headers.contentType = ContentType.json;
           request.response.headers.add('Access-Control-Allow-Origin', '*');
           request.response.write(jsonEncode({
@@ -326,22 +326,44 @@ class ClanNetplayService {
     });
   }
 
-  /// Quét nhanh dải mạng nội bộ qua HTTP
-  Future<void> scanSubnet() async {
+  bool _isSubnetScanning = false;
+  String? lastKnownHostIp;
+
+  /// Quét nhanh dải mạng nội bộ qua HTTP (ưu tiên máy chủ gần nhất và dải lân cận)
+  Future<void> scanSubnet([String? priorityIp]) async {
+    if (_isSubnetScanning) return;
+    _isSubnetScanning = true;
     try {
       final localIp = await getLocalIp();
-      final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 500);
+      final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 350);
 
-      final List<String> targetIps = ['127.0.0.1', localIp];
+      final List<String> targetIps = [];
+      if (priorityIp != null && priorityIp.isNotEmpty) {
+        targetIps.add(priorityIp);
+      }
+      if (lastKnownHostIp != null && !targetIps.contains(lastKnownHostIp)) {
+        targetIps.add(lastKnownHostIp!);
+      }
+      if (!targetIps.contains('127.0.0.1')) targetIps.add('127.0.0.1');
+      if (!targetIps.contains(localIp)) targetIps.add(localIp);
+
       if (localIp.contains('.')) {
         final parts = localIp.split('.');
         if (parts.length == 4) {
           final prefix = '${parts[0]}.${parts[1]}.${parts[2]}';
           final hostNum = int.tryParse(parts[3]) ?? 0;
-          for (int delta = 1; delta <= 30; delta++) {
-            if (hostNum - delta >= 1) targetIps.add('$prefix.${hostNum - delta}');
-            if (hostNum + delta <= 254) targetIps.add('$prefix.${hostNum + delta}');
+          // Quét lân cận +-10 máy trước (thường router Wi-Fi cấp IP sát nhau)
+          for (int delta = 1; delta <= 10; delta++) {
+            if (hostNum + delta <= 254) {
+              final ip = '$prefix.${hostNum + delta}';
+              if (!targetIps.contains(ip)) targetIps.add(ip);
+            }
+            if (hostNum - delta >= 1) {
+              final ip = '$prefix.${hostNum - delta}';
+              if (!targetIps.contains(ip)) targetIps.add(ip);
+            }
           }
+          // Quét mở rộng các máy còn lại
           for (int i = 1; i <= 254; i++) {
             final ip = '$prefix.$i';
             if (!targetIps.contains(ip)) targetIps.add(ip);
@@ -349,7 +371,8 @@ class ClanNetplayService {
         }
       }
 
-      const batchSize = 35;
+      // Batch nhỏ 6 kết nối để tránh nghẽn socket hệ điều hành
+      const batchSize = 6;
       for (int i = 0; i < targetIps.length; i += batchSize) {
         final batch = targetIps.skip(i).take(batchSize);
         await Future.wait(batch.map((targetIp) async {
@@ -378,7 +401,9 @@ class ClanNetplayService {
         }));
       }
       client.close();
-    } catch (_) {}
+    } catch (_) {} finally {
+      _isSubnetScanning = false;
+    }
   }
 
   /// Connect to Host as Player 2

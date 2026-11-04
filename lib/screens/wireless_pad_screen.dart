@@ -1,6 +1,6 @@
+import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -191,6 +191,43 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
     } catch (_) {}
   }
 
+  KeyEventResult _handleHardwareKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyUpEvent) {
+      return KeyEventResult.ignored;
+    }
+    final isDown = event is KeyDownEvent;
+    final key = event.logicalKey;
+
+    String? btn;
+    if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.keyW) {
+      btn = 'UP';
+    } else if (key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.keyS) {
+      btn = 'DOWN';
+    } else if (key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.keyA) {
+      btn = 'LEFT';
+    } else if (key == LogicalKeyboardKey.arrowRight || key == LogicalKeyboardKey.keyD) {
+      btn = 'RIGHT';
+    } else if (key == LogicalKeyboardKey.keyZ || key == LogicalKeyboardKey.keyJ || key == LogicalKeyboardKey.space) {
+      btn = 'A';
+    } else if (key == LogicalKeyboardKey.keyX || key == LogicalKeyboardKey.keyK) {
+      btn = 'B';
+    } else if (key == LogicalKeyboardKey.keyC || key == LogicalKeyboardKey.keyU) {
+      btn = 'C';
+    } else if (key == LogicalKeyboardKey.keyV || key == LogicalKeyboardKey.keyI) {
+      btn = 'D';
+    } else if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.digit1 || key == LogicalKeyboardKey.digit2) {
+      btn = 'START';
+    } else if (key == LogicalKeyboardKey.shiftLeft || key == LogicalKeyboardKey.shiftRight || key == LogicalKeyboardKey.digit5 || key == LogicalKeyboardKey.digit6) {
+      btn = 'SELECT';
+    }
+
+    if (btn != null) {
+      _handleButtonEvent(btn, isDown);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   void _handleButtonEvent(String button, bool isDown) {
     _unlockAudioOnGesture();
     widget.clanService.sendClientInput(button, isDown);
@@ -259,7 +296,10 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
     final size = MediaQuery.of(context).size;
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape || size.width > size.height;
 
-    return Scaffold(
+    return Focus(
+      autofocus: true,
+      onKeyEvent: _handleHardwareKey,
+      child: Scaffold(
       backgroundColor: const Color(0xFF0C101B),
       appBar: isLandscape
           ? null
@@ -307,6 +347,7 @@ class _WirelessPadScreenState extends State<WirelessPadScreen> {
       body: SafeArea(
         child: isLandscape ? _buildLandscapeLayout() : _buildPortraitLayout(),
       ),
+    ),
     );
   }
 

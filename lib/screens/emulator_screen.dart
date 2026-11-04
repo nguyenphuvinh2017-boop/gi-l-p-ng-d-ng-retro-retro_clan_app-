@@ -417,12 +417,12 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
             ),
           );
         }
-        _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status($connected, false);");
+        _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status($connected, true);");
         if (connected) {
           for (var delay in [800, 2000, 3500]) {
             Future.delayed(Duration(milliseconds: delay), () {
               if (mounted && _p2Connected) {
-                _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status(true, false);");
+                _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status(true, true);");
               }
             });
           }
@@ -434,7 +434,7 @@ class _EmulatorScreenState extends State<EmulatorScreen> with WidgetsBindingObse
         for (var delay in [800, 2000, 3500, 5000]) {
           Future.delayed(Duration(milliseconds: delay), () {
             if (mounted && _p2Connected) {
-              _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status(true, false);");
+              _runJs("if (window.activatePlayer2) window.activatePlayer2(); window.setP2Status(true, true);");
             }
           });
         }

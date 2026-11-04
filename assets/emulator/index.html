@@ -708,8 +708,57 @@
       let lastFrameSentTime = 0;
       let minIntervalTimer = null;
       let watchdogTimer = null;
+      let pcHost = null;
+      let webrtcActive = false;
+
+      function startWebRtcHost() {
+        try {
+          const cvs = document.querySelector('#game-container canvas') || 
+                      document.getElementById('nes-canvas') || 
+                      document.querySelector('canvas');
+          if (!cvs || typeof cvs.captureStream !== 'function') return false;
+
+          const stream = cvs.captureStream(60);
+          if (!stream) return false;
+
+          if (window.__clanAudioDestNode) {
+            try {
+              const aTracks = window.__clanAudioDestNode.stream.getAudioTracks();
+              if (aTracks.length > 0) stream.addTrack(aTracks[0]);
+            } catch(e) {}
+          }
+
+          if (pcHost) { try { pcHost.close(); } catch(e) {} }
+          pcHost = new RTCPeerConnection({ iceServers: [] });
+
+          stream.getTracks().forEach(function(track) {
+            pcHost.addTrack(track, stream);
+          });
+
+          pcHost.onicecandidate = function(event) {
+            if (event.candidate && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
+              screenFeedWs.send(JSON.stringify({ type: 'webrtc_candidate', candidate: event.candidate }));
+            }
+          };
+
+          pcHost.createOffer({ offerToReceiveVideo: false, offerToReceiveAudio: false })
+            .then(function(offer) {
+              return pcHost.setLocalDescription(offer);
+            })
+            .then(function() {
+              if (screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
+                screenFeedWs.send(JSON.stringify({ type: 'webrtc_offer', sdp: pcHost.localDescription }));
+              }
+            })
+            .catch(function(err) {});
+          return true;
+        } catch(e) {
+          return false;
+        }
+      }
 
       function sendNextFrame() {
+        if (webrtcActive) return; // WebRTC đã phát luồng phần cứng 60 FPS
         if (!p2Connected) return;
         if (!screenFeedWs || screenFeedWs.readyState !== WebSocket.OPEN) return;
         if (isCapturingFrame) return;
@@ -723,11 +772,19 @@
             return;
           }
 
+          if (screenFeedWs.bufferedAmount > 32768) {
+            setTimeout(sendNextFrame, 20);
+            return;
+          }
+
           isCapturingFrame = true;
-          const w = cvs.width;
-          const h = cvs.height;
-          const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas(w, h);
-          offCtx.drawImage(cvs, 0, 0, w, h);
+          const cvsW = cvs.width;
+          const cvsH = cvs.height;
+          // Tỉ lệ chuẩn 4:3 siêu nét nhẹ tải (tối đa 512x384):
+          const targetW = cvsW > 512 ? 512 : cvsW;
+          const targetH = cvsW > 512 ? Math.round(cvsH * (512 / cvsW)) : cvsH;
+          const { canvas: offCvs, ctx: offCtx } = getOffscreenCanvas(targetW, targetH);
+          offCtx.drawImage(cvs, 0, 0, targetW, targetH);
           offCvs.toBlob((blob) => {
             try {
               if (blob && p2Connected && screenFeedWs && screenFeedWs.readyState === WebSocket.OPEN) {
@@ -737,25 +794,22 @@
             } finally {
               isCapturingFrame = false;
             }
-          }, 'image/jpeg', 0.85);
+          }, 'image/jpeg', 0.82);
         } catch(e) {
           isCapturingFrame = false;
         }
       }
 
       function onAckReceived() {
+        if (webrtcActive) return;
         const now = performance.now();
         const elapsed = now - lastFrameSentTime;
-        // Pacing mượt mà ~50 FPS (khoảng cách tối thiểu 20ms giữa 2 frame):
-        // P2 nhận đều đặn không giật cục, P1 không bị tốn CPU
-        if (elapsed >= 20) {
+        if (elapsed >= 16) {
           sendNextFrame();
         } else {
-          const waitTime = Math.max(1, Math.round(20 - elapsed));
+          const waitTime = Math.max(1, Math.round(16 - elapsed));
           if (minIntervalTimer) clearTimeout(minIntervalTimer);
-          minIntervalTimer = setTimeout(() => {
-            sendNextFrame();
-          }, waitTime);
+          minIntervalTimer = setTimeout(sendNextFrame, waitTime);
         }
       }
 
@@ -764,13 +818,27 @@
         try {
           const host = window.location.hostname || '127.0.0.1';
           screenFeedWs = new WebSocket('ws://' + host + ':8989/screen_feed');
-          screenFeedWs.binaryType = 'arraybuffer';
           screenFeedWs.onopen = () => {
-            // Gửi frame đầu tiên để khởi động luồng truyền
+            startWebRtcHost();
             setTimeout(sendNextFrame, 100);
           };
-          screenFeedWs.onmessage = () => {
-            onAckReceived();
+          screenFeedWs.onmessage = (e) => {
+            if (typeof e.data === 'string') {
+              try {
+                const msg = JSON.parse(e.data);
+                if (msg.type === 'webrtc_answer' && pcHost) {
+                  pcHost.setRemoteDescription(new RTCSessionDescription(msg.sdp)).then(function() {
+                    webrtcActive = true;
+                  }).catch(function() {});
+                } else if (msg.type === 'webrtc_candidate' && pcHost) {
+                  pcHost.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(function() {});
+                }
+              } catch(err) {
+                onAckReceived();
+              }
+            } else {
+              onAckReceived();
+            }
           };
           screenFeedWs.onclose = () => {
             if (p2Connected) setTimeout(connectScreenWs, 1000);
@@ -779,16 +847,17 @@
       }
       connectScreenWs();
 
-      // Watchdog an toàn: Nếu mạng Wi-Fi bị rớt gói ACK khiến luồng bị dừng, tự kích hoạt gửi tiếp
       watchdogTimer = setInterval(() => {
-        if (p2Connected && (performance.now() - lastFrameSentTime > 60)) {
+        if (!webrtcActive && p2Connected && (performance.now() - lastFrameSentTime > 50)) {
           sendNextFrame();
         }
-      }, 50);
+      }, 40);
 
       window.__clanStopWatchdog = () => {
         if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
         if (minIntervalTimer) { clearTimeout(minIntervalTimer); minIntervalTimer = null; }
+        if (pcHost) { try { pcHost.close(); } catch(e) {} pcHost = null; }
+        webrtcActive = false;
       };
     }
 
@@ -816,6 +885,12 @@
       if (!actx || actx.__clanTapInstalled) return;
       actx.__clanTapInstalled = true;
 
+      if (!window.__clanAudioDestNode && actx.createMediaStreamDestination) {
+        try {
+          window.__clanAudioDestNode = actx.createMediaStreamDestination();
+        } catch(e) {}
+      }
+
       try {
         const proc = actx.createScriptProcessor(2048, 1, 1);
         actx.__clanAudioProcessor = proc;
@@ -842,6 +917,9 @@
           window.__capturedAudioNodes.forEach(node => {
             if (node.context === actx && node !== proc) {
               try { origConnect.call(node, proc); } catch(e) {}
+              if (window.__clanAudioDestNode) {
+                try { origConnect.call(node, window.__clanAudioDestNode); } catch(e) {}
+              }
             }
           });
         }
@@ -941,7 +1019,7 @@
       } catch(e) {}
     };
 
-    window.setP2Status = function(connected, enableStreaming = false) {
+    window.setP2Status = function(connected, enableStreaming = true) {
       p2Connected = connected;
       if (connected) {
         window.activatePlayer2();
